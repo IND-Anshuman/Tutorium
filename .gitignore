@@ -1,0 +1,27 @@
+# dependencies / build
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# local env (never commit secrets) — keys are synced from MetaForge by `npm run env:sync`
+.env
+.env.local
+.env.*.local
+
+# local database
+data/
+
+# logs / scratch
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+
+# generated
+next-env.d.ts
