@@ -65,15 +65,76 @@ CREATE TABLE IF NOT EXISTS messages (
   audio_meta TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS jobs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',      -- pending | running | done | failed
+  payload TEXT,                                 -- JSON context needed to run
+  result TEXT,                                  -- JSON result (error message on failure)
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS quiz_scores (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  topic_id TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_topics_subject ON topics(subject_id);
 CREATE INDEX IF NOT EXISTS idx_materials_topic ON materials(topic_id);
 CREATE INDEX IF NOT EXISTS idx_messages_topic ON messages(topic_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_quiz_topic ON quiz_scores(topic_id);
 `);
 
 export const uid = () => crypto.randomUUID();
 export const nowIso = () => new Date().toISOString();
 
-// ---------- profiles ----------
+// ---------- jobs (background study-pack generation) ----------
+export function createJob(userId: string, kind: string, payload?: Record<string, unknown>) {
+  const id = uid();
+  db.prepare(
+    `INSERT INTO jobs (id, user_id, kind, status, payload, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)`
+  ).run(id, userId, kind, payload ? JSON.stringify(payload) : null, nowIso(), nowIso());
+  return id;
+}
+
+export function setJobStatus(id: string, status: string, result?: Record<string, unknown> | string) {
+  const resultStr = typeof result === "string" ? result : result ? JSON.stringify(result) : null;
+  db.prepare(`UPDATE jobs SET status = ?, result = ?, updated_at = ? WHERE id = ?`).run(
+    status,
+    resultStr,
+    nowIso(),
+    id
+  );
+}
+
+export function getJob(id: string) {
+  const row = db.prepare(`SELECT * FROM jobs WHERE id = ?`).get(id) as any;
+  if (!row) return null;
+  return {
+    ...row,
+    payload: row.payload ? JSON.parse(row.payload) : null,
+    result: row.result ? JSON.parse(row.result) : null,
+  };
+}
+
+// ---------- quiz scores ----------
+export function saveQuizScore(userId: string, topicId: string, score: number, total: number) {
+  db.prepare(
+    `INSERT INTO quiz_scores (id, user_id, topic_id, score, total, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(uid(), userId, topicId, score, total, nowIso());
+}
+
+export function quizHistory(topicId: string) {
+  return db
+    .prepare(`SELECT score, total, created_at FROM quiz_scores WHERE topic_id = ? ORDER BY created_at ASC`)
+    .all(topicId);
+}
+
 export function getOrCreateProfile(userId: string, name?: string) {
   let row = db.prepare(`SELECT * FROM profiles WHERE user_id = ?`).get(userId) as any;
   if (!row) {

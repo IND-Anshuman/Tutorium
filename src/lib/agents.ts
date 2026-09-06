@@ -142,6 +142,30 @@ export function applyMemoryUpdate(
   };
 }
 
+// ---------- visual designer (produces real HTML, not a stub) ----------
+export async function generateVisual(args: {
+  topic: string;
+  subject: string;
+  sourceText: string;
+}): Promise<{ html: string; title: string }> {
+  const { data } = await llmJson<{ title: string; html: string }>({
+    system: `You design an engaging self-contained HTML visual for a lesson so a student can understand it at a glance.
+Generate a SINGLE clean HTML snippet using ONLY these inline-safe pieces:
+- Semantic elements: h1/h2, p, ul/li, table
+- One <style> block with a dark-on-light palette you choose
+- Optional inline <svg> for a simple diagram
+NO external CSS/JS, NO script tags, NO <html>/<body>/<head> wrapper, NO iframes. Keep it under ~60 lines.
+Return JSON: {"title": string, "html": string}`,
+    user: `Topic: ${args.topic} (Subject: ${args.subject})
+Source material:
+"""${String(args.sourceText).slice(0, 3000)}"""`,
+    maxTokens: 1600,
+    temperature: 0.2,
+  });
+  const html = (data.html || "").replace(/<script[\s\S]*?<\/script>/gi, "").slice(0, 8000);
+  return { html, title: data.title || `${args.topic} — Visual Guide` };
+}
+
 // ---------- teach-back grader (Feynman mode) ----------
 export async function gradeTeachBack(args: {
   topic: string;

@@ -10,38 +10,58 @@ import {
   getSubject,
   saveMaterial,
   getMaterial,
+  createJob,
   asInteractive,
 } from "@/lib/db";
-import { classifyMessage, createStudyPack, teachTopic, updateMemory, applyMemoryUpdate } from "@/lib/agents";
-import { pickVocabTerms } from "@/lib/vocab";
-import { buildStudyPackActions, buildStudyPackConfirmation } from "@/lib/replies";
+import { classifyMessage, updateMemory, applyMemoryUpdate } from "@/lib/agents";
+import { orchestrateTurn, type OrcCtx } from "@/lib/orchestrate";
+import { startJobRunner } from "@/lib/jobrunner";
 import type { ChatMessage } from "@/lib/types";
 
+// Start the background job worker when the server boots (guarded singleton).
+startJobRunner();
+
 export const maxDuration = 120;
+
+const MAX_MESSAGE_CHARS = 20_000;
 
 interface AgentRequestBody {
   userId: string;
   message: string;
   topicId?: string | null;
   transcriptMeta?: { fromVoice?: boolean; wordCount?: number; avgConfidence?: number } | null;
+  // background job control: "start" queues a study-pack job and returns immediately
+  mode?: "sync" | "job" | "job_status";
+  jobId?: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AgentRequestBody;
-    const userId = body.userId || "demo-user";
-    const message = (body.message || "").trim();
-    if (!message) {
-      return NextResponse.json({ error: "message required" }, { status: 400 });
+    const userId = sanitizeUserId(body.userId);
+
+    // ---- job status polling ----
+    if (body.mode === "job_status") {
+      if (!body.jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
+      const { getJob } = await import("@/lib/db");
+      const job = getJob(body.jobId);
+      if (!job) return NextResponse.json({ error: "job not found" }, { status: 404 });
+      return NextResponse.json({ job: { id: job.id, kind: job.kind, status: job.status, result: job.result } });
     }
 
+    const message = (body.message || "").trim();
+    if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
+    if (message.length > MAX_MESSAGE_CHARS) {
+      return NextResponse.json({ error: `message too long (max ${MAX_MESSAGE_CHARS} chars)` }, { status: 400 });
+    }
+
+    // ---- normal sync turn (auto-queues heavy create_study_pack below) ----
     const profile = getOrCreateProfile(userId);
     const history: ChatMessage[] = listMessages(body.topicId || "")
       .filter((m: any) => m.role === "user" || m.role === "assistant")
       .slice(-10)
       .map((m: any) => ({ role: m.role, content: m.content }));
 
-    // 1) classify (or lock to current topic context)
     let classification = await classifyMessage(message, history);
     let subject: any;
     let topic: any;
@@ -55,7 +75,6 @@ export async function POST(req: NextRequest) {
         classification = { ...classification, subject: s.name, topic: t.title };
       }
     }
-
     if (!topic) {
       subject = findOrCreateSubject(userId, classification.subject);
       topic = findOrCreateTopic(subject.id, classification.topic, classification.subcategory);
@@ -63,157 +82,83 @@ export async function POST(req: NextRequest) {
 
     saveMessage(topic.id, "user", message, null, body.transcriptMeta || null);
 
-    // 2) route by intent
-    let reply = "";
-    let interactive = null as any;
-
-    const sourceText: string =
-      (getMaterial(topic.id, "clean_notes")?.content?.text as string | undefined) ||
-      (getMaterial(topic.id, "reviewer")?.content?.text as string | undefined) ||
-      message;
-
-    switch (classification.intent) {
-      case "create_study_pack": {
-        const pack = await createStudyPack({
-          topic: topic.title,
-          subject: subject.name,
-          sourceText: message,
-        });
-        saveMaterial(topic.id, "clean_notes", `${topic.title} — Clean Notes`, { text: pack.clean_notes });
-        saveMaterial(topic.id, "reviewer", `${topic.title} — Reviewer`, { text: pack.reviewer });
-        saveMaterial(topic.id, "flashcards", `${topic.title} — Flashcards`, { cards: pack.flashcards });
-        saveMaterial(topic.id, "quiz", `${topic.title} — Quiz`, { questions: pack.quiz });
-        saveMaterial(topic.id, "summary", `${topic.title} — Summary`, { text: pack.summary });
-        if (pack.story) saveMaterial(topic.id, "story", `${topic.title} — Story`, { text: pack.story });
-
-        reply = buildStudyPackConfirmation(topic.title, topic.id);
-        interactive = buildStudyPackActions(topic.title, topic.id);
-
-        const vocab = pickVocabTerms(pack.clean_notes + "\n" + pack.summary, 12);
-        saveMaterial(topic.id, "sayitback", `${topic.title} — Say-It-Back passage`, {
-          passage: pack.summary,
-          keyTerms: vocab.map((v) => v.term),
-        });
-        break;
-      }
-
-      case "make_flashcards": {
-        const m = getMaterial(topic.id, "flashcards");
-        if (m) {
-          interactive = { type: "flashcards", topic: topic.title, topicId: topic.id, cards: m.content.cards || [] };
-          reply = `Here are your ${topic.title} flashcards.`;
-        } else {
-          const pack = await createStudyPack({ topic: topic.title, subject: subject.name, sourceText });
-          saveMaterial(topic.id, "flashcards", `${topic.title} — Flashcards`, { cards: pack.flashcards });
-          interactive = { type: "flashcards", topic: topic.title, topicId: topic.id, cards: pack.flashcards };
-          reply = `Fresh flashcards for **${topic.title}**.`;
-        }
-        break;
-      }
-
-      case "make_quiz": {
-        const m = getMaterial(topic.id, "quiz");
-        if (m) {
-          interactive = { type: "quiz", topic: topic.title, topicId: topic.id, questions: m.content.questions || [] };
-          reply = `Quiz time — ${topic.title}.`;
-        } else {
-          const pack = await createStudyPack({ topic: topic.title, subject: subject.name, sourceText });
-          saveMaterial(topic.id, "quiz", `${topic.title} — Quiz`, { questions: pack.quiz });
-          interactive = { type: "quiz", topic: topic.title, topicId: topic.id, questions: pack.quiz };
-          reply = `Quiz time — ${topic.title}.`;
-        }
-        break;
-      }
-
-      case "make_summary": {
-        const m = getMaterial(topic.id, "summary");
-        reply = m ? m.content.text : `No summary yet — send your notes and I'll build a study pack for **${topic.title}**.`;
-        break;
-      }
-
-      case "make_story": {
-        const m = getMaterial(topic.id, "story");
-        reply = m ? m.content.text : `No story yet — send notes and ask for a study pack.`;
-        break;
-      }
-
-      case "make_visual": {
-        const m = getMaterial(topic.id, "html_visual");
-        if (m) {
-          interactive = { type: "html_visual", topic: topic.title, topicId: topic.id, title: m.content.title || `${topic.title} visual`, html: m.content.html };
-          reply = `Here's the visual guide for **${topic.title}**.`;
-        } else {
-          reply = `Visual generation for **${topic.title}** needs a study pack first — send your notes to build one, then I'll draw it.`;
-        }
-        break;
-      }
-
-      case "say_it_back": {
-        const m = getMaterial(topic.id, "sayitback");
-        const passage = m?.content?.passage || (getMaterial(topic.id, "summary")?.content?.text as string | undefined) || `Say back what you learned about ${topic.title}.`;
-        const keyTerms = (m?.content?.keyTerms as string[] | undefined) || pickVocabTerms(passage, 10).map((v) => v.term);
-        interactive = {
-          type: "say_it_back",
-          topic: topic.title,
-          topicId: topic.id,
-          passage,
-          keyTerms,
-        };
-        reply = `Read this aloud in your own words — I'll score every word.`;
-        break;
-      }
-
-      case "retrieve_material": {
-        const order = ["flashcards", "quiz", "summary", "reviewer", "clean_notes", "story", "html_visual"];
-        for (const t of order) {
-          const m = getMaterial(topic.id, t);
-          if (m) {
-            if (t === "flashcards") interactive = { type: "flashcards", topic: topic.title, topicId: topic.id, cards: m.content.cards || [] };
-            else if (t === "quiz") interactive = { type: "quiz", topic: topic.title, topicId: topic.id, questions: m.content.questions || [] };
-            reply = `Here's what you have for **${topic.title}** so far.`;
-            break;
-          }
-        }
-        if (!reply) reply = `Nothing saved yet for **${topic.title}** — paste your notes to build a study pack.`;
-        break;
-      }
-
-      case "teach_topic":
-      default: {
-        const taught = await teachTopic({
-          topic: topic.title,
-          subject: subject.name,
-          question: message,
-          history,
-          profile: {
-            learning_style: profile.learning_style,
-            weaknesses: profile.weaknesses,
-            strengths: profile.strengths,
-          },
-          sourceText,
-        });
-        reply = taught.reply;
-        if (taught.keyTerms?.length) {
-          saveMaterial(topic.id, "sayitback", `${topic.title} — Say-It-Back passage`, {
-            passage: taught.reply,
-            keyTerms: taught.keyTerms,
-          });
-        }
-        break;
-      }
+    // Heavy generations (study pack, visual) never block the response: hand them
+    // to the background runner and return a 202 with a jobId the client polls.
+    if (classification.intent === "create_study_pack" || classification.intent === "make_visual") {
+      const jobId = createJob(userId, classification.intent === "make_visual" ? "visual" : "study_pack", {
+        topicId: topic.id,
+        message,
+        topicTitle: topic.title,
+        subjectName: subject.name,
+        classification,
+      });
+      return NextResponse.json({
+        queued: true,
+        jobId,
+        topicId: topic.id,
+        topicTitle: topic.title,
+        subjectId: subject.id,
+        subjectName: subject.name,
+        intent: classification.intent,
+        pretty: classification.intent === "make_visual"
+          ? "Drawing the visual guide — it'll be ready in a moment."
+          : "I'm building your study pack — it'll be ready in a moment.",
+      });
     }
 
-    // 3) memory update (best-effort)
+    const ctx: OrcCtx = {
+      userId,
+      topicId: topic.id,
+      topicTitle: topic.title,
+      subjectName: subject.name,
+      classification,
+      history,
+      profile: { learning_style: profile.learning_style, strengths: profile.strengths, weaknesses: profile.weaknesses },
+      getMaterial,
+      saveMaterial,
+      message,
+    };
+
+    const result = await orchestrateTurn(ctx);
+    const reply = result.reply;
+
+    // ---- fire-and-forget memory update (don't block the reply) ----
+    updateMemoryAsync(userId, profile, message, reply);
+
+    saveMessage(topic.id, "assistant", reply, asInteractive(result.interactive));
+
+    return NextResponse.json({
+      reply,
+      interactive: result.interactive,
+      topicId: topic.id,
+      topicTitle: topic.title,
+      subjectId: subject.id,
+      subjectName: subject.name,
+      intent: result.intent,
+      runtime: "featherless",
+    });
+  } catch (err) {
+    console.error("agent error:", err);
+    return NextResponse.json({ error: (err as Error).message || "agent failed" }, { status: 500 });
+  }
+}
+
+function sanitizeUserId(raw: string): string {
+  const v = (raw || "demo-user").trim().slice(0, 64);
+  return v || "demo-user";
+}
+
+// Run the memory update without awaiting; failures are swallowed.
+function updateMemoryAsync(
+  userId: string,
+  profile: { learning_style: string; strengths: string[]; weaknesses: string[] },
+  message: string,
+  reply: string
+) {
+  (async () => {
     try {
-      const upd = await updateMemory({
-        message,
-        reply,
-        profile: { learning_style: profile.learning_style, strengths: profile.strengths, weaknesses: profile.weaknesses },
-      });
-      const applied = applyMemoryUpdate(
-        { learning_style: profile.learning_style, strengths: profile.strengths, weaknesses: profile.weaknesses },
-        upd
-      );
+      const upd = await updateMemory({ message, reply, profile });
+      const applied = applyMemoryUpdate(profile, upd);
       updateProfile(userId, {
         learning_style: applied.learning_style,
         strengths: applied.strengths,
@@ -223,21 +168,5 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.warn("memory update skipped:", (e as Error).message);
     }
-
-    saveMessage(topic.id, "assistant", reply, asInteractive(interactive));
-
-    return NextResponse.json({
-      reply,
-      interactive,
-      topicId: topic.id,
-      topicTitle: topic.title,
-      subjectId: subject.id,
-      subjectName: subject.name,
-      intent: classification.intent,
-      runtime: "featherless",
-    });
-  } catch (err) {
-    console.error("agent error:", err);
-    return NextResponse.json({ error: (err as Error).message || "agent failed" }, { status: 500 });
-  }
+  })();
 }

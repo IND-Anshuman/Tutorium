@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import InteractiveMessage from "@/components/chat/InteractiveMessage";
 import type { InteractivePayload } from "@/lib/types";
 
@@ -23,6 +22,59 @@ function TranscriptBadge({ meta }: { meta?: { wordCount?: number; avgConfidence?
   );
 }
 
+// Turn an AI reply into spoken voice (browser speechSynthesis — zero cost).
+function SpeakButton({ text }: { text: string }) {
+  const [speaking, setSpeaking] = useState(false);
+  const speak = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!("speechSynthesis" in window)) return;
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+    const clean = text.replace(/[#*_`>\[\]]/g, " ").replace(/\s+/g, " ").trim();
+    if (!clean) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    u.rate = 1;
+    u.pitch = 1;
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+    setSpeaking(true);
+  };
+  return (
+    <button
+      onClick={speak}
+      className="mt-2 rounded-full px-2.5 py-1 text-[11px]"
+      style={{ background: "var(--panel)", border: "1px solid var(--border)", color: speaking ? "var(--accent)" : "var(--muted)" }}
+      title="Hear this reply"
+    >
+      {speaking ? "■ Stop" : "🔊 Listen"}
+    </button>
+  );
+}
+
+// Poll a background job via /api/agent until done/failed (bounded).
+async function pollJob(jobId: string, onDone: (job: any) => void, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "demo-user", mode: "job_status", jobId }),
+    });
+    const data = await res.json();
+    const job = data.job;
+    if (job?.status === "done" || job?.status === "failed") {
+      onDone(job);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -36,7 +88,6 @@ export default function Home() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -59,6 +110,39 @@ export default function Home() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "agent failed");
         setTopicId(data.topicId);
+        // Study-pack generation runs in the background — poll until ready.
+        if (data.queued && data.jobId) {
+          setMessages((m) => [
+            ...m,
+            { role: "assistant", content: data.pretty || "I'm building your study pack…" },
+          ]);
+          await pollJob(data.jobId, async (job) => {
+            setTopicId(data.topicId);
+            setMessages((m) => [
+                ...m,
+                {
+                  role: "assistant",
+                  content: data.intent === "make_visual"
+                    ? `Here's the visual guide for **${data.topicTitle}**.`
+                    : `Your **${data.topicTitle}** study pack is ready — clean notes, reviewer, flashcards, quiz, summary, and a Say-It-Back passage. What next?`,
+                  interactive: (job.result?.interactive as InteractivePayload | null) ||
+                    (data.intent === "make_visual"
+                      ? { type: "vocab_preview", topic: data.topicTitle, topicId: data.topicId, terms: [] } as unknown as InteractivePayload
+                      : {
+                          type: "study_pack_actions",
+                          topic: data.topicTitle,
+                          topicId: data.topicId,
+                          actions: [
+                            { label: "Take the quiz", materialType: "quiz" },
+                            { label: "Show flashcards", materialType: "flashcards" },
+                            { label: "Practice saying it back", materialType: "say_it_back" },
+                          ],
+                        }),
+                },
+              ]);
+          });
+          return;
+        }
         setMessages((m) => [...m, { role: "assistant", content: data.reply, interactive: data.interactive }]);
       } catch (e) {
         setError((e as Error).message);
@@ -224,6 +308,7 @@ export default function Home() {
               }}
             >
               <div className="whitespace-pre-wrap">{m.content}</div>
+              {m.role === "assistant" && <SpeakButton text={m.content} />}
               {m.interactive && <div className="mt-3"><InteractiveMessage payload={m.interactive} onSayItBackRecord={onSayItBackRecordingStop} /></div>}
             </div>
           </div>

@@ -3,7 +3,15 @@
 import { useState } from "react";
 import type { QuizItem } from "@/lib/types";
 
-export default function MiniQuiz({ questions }: { questions: QuizItem[] }) {
+function questionPraise(score: number, total: number): string {
+  const pct = total ? score / total : 0;
+  if (pct >= 0.9) return "Excellent — you've got this.";
+  if (pct >= 0.7) return "Great work — a couple to review.";
+  if (pct >= 0.5) return "Solid attempt — review the ones you missed.";
+  return "Keep at it — recap the material and try again.";
+}
+
+export default function MiniQuiz({ questions, topicId }: { questions: QuizItem[]; topicId?: string }) {
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const [score, setScore] = useState(0);
@@ -18,12 +26,24 @@ export default function MiniQuiz({ questions }: { questions: QuizItem[] }) {
     if (String(choiceIdx) === String(q.answer)) setScore((s) => s + 1);
   };
 
+  const finish = () => {
+    setDone(true);
+    if (topicId) {
+      // persist score to learner profile + quiz history (fire-and-forget)
+      fetch("/api/quiz-score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: "demo-user", topicId, score, total: questions.length }),
+      }).catch(() => {});
+    }
+  };
+
   const next = () => {
     if (idx + 1 < questions.length) {
       setIdx(idx + 1);
       setPicked(null);
     } else {
-      setDone(true);
+      finish();
     }
   };
 
@@ -31,6 +51,9 @@ export default function MiniQuiz({ questions }: { questions: QuizItem[] }) {
     return (
       <div className="rounded-xl p-4 text-center" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
         <div className="text-lg font-semibold">{score} / {questions.length}</div>
+        <div className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>
+          {questionPraise(score, questions.length)} Saved to your learner profile.
+        </div>
         <button
           className="mt-2 rounded-lg px-3 py-1 text-xs"
           style={{ background: "var(--panel)", border: "1px solid var(--border)" }}

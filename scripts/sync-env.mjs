@@ -13,18 +13,24 @@ const metaforgeEnv = "C:\\Users\\HP\\Desktop\\MetaForge\\.env";
 const target = join(root, ".env.local");
 
 const wanted = ["SPEECHMATICS_API_KEY", "FEATHERLESS_API_KEY"];
+const wantedModel = "METAFORGE_FEATHERLESS_MODEL";
 
 const src = readFileSync(metaforgeEnv, "utf8");
 const found = {};
 for (const line of src.split(/\r?\n/)) {
   const m = line.match(/^([A-Z_0-9]+)=(.*)$/);
-  if (m && wanted.includes(m[1]) && m[2].trim()) found[m[1]] = m[2].trim();
+  if (m && m[1] === wantedModel && m[2].trim()) {
+    found["TUTORIUM_LLM_MODEL"] = m[2].trim();
+  } else if (m && wanted.includes(m[1]) && m[2].trim()) {
+    found[m[1]] = m[2].trim();
+  }
 }
 
 const missing = wanted.filter((k) => !found[k]);
 if (missing.length) {
   console.error(`Missing in MetaForge .env: ${missing.join(", ")}`);
-  process.exit(1);
+  // model is optional — only hard-fail on the two credentials
+  if (missing.some((k) => ["SPEECHMATICS_API_KEY", "FEATHERLESS_API_KEY"].includes(k))) process.exit(1);
 }
 
 let existing = "";
@@ -33,7 +39,7 @@ const lines = existing.split(/\r?\n/).filter(Boolean);
 const keyRe = /^([A-Z_0-9]+)=/;
 const present = new Set(lines.map((l) => l.match(keyRe)?.[1]).filter(Boolean));
 
-for (const k of wanted) {
+for (const k of [...wanted, "TUTORIUM_LLM_MODEL"]) {
   if (present.has(k)) {
     const idx = lines.findIndex((l) => l.match(keyRe)?.[1] === k);
     lines[idx] = `${k}=${found[k]}`;

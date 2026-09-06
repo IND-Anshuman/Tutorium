@@ -22,7 +22,7 @@ export default function InteractiveMessage({ payload, onSayItBackRecord }: Props
     case "flashcards":
       return <FlashcardDeck cards={payload.cards} />;
     case "quiz":
-      return <MiniQuiz questions={payload.questions} />;
+      return <MiniQuiz questions={payload.questions} topicId={payload.topicId} />;
     case "info_cards":
       return <InfoCards cards={payload.cards} />;
     case "comparison_table":

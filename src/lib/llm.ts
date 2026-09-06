@@ -1,11 +1,6 @@
 // Featherless LLM client — OpenAI-compatible chat completions, Bearer auth.
-// Same shape as PADAYON's fireworks.ts but pointed at the user's Featherless key.
-// Every agent goes through here so the provider is swappable in ONE place.
-
-const BASE_URL = (process.env.TUTORIUM_LLM_BASE_URL || "https://api.featherless.ai/v1").replace(/\/$/, "");
-const MODEL = process.env.TUTORIUM_LLM_MODEL || "Qwen/Qwen3-32B";
-const API_KEY = process.env.FEATHERLESS_API_KEY || "";
-const REQUEST_TIMEOUT_MS = 90_000;
+// Provider swappable in ONE place. Includes retry with backoff, a fallback model
+// chain, and tolerant JSON extraction so a bad LLM turn degrades gracefully.
 
 export interface LlmMessage {
   role: "system" | "user" | "assistant";
@@ -20,22 +15,88 @@ export interface LlmRuntime {
 
 export class LlmError extends Error {}
 
+const BASE_URL = (process.env.TUTORIUM_LLM_BASE_URL || "https://api.featherless.ai/v1").replace(/\/$/, "");
+const PRIMARY_MODEL =
+  process.env.TUTORIUM_LLM_MODEL || process.env.FEATHERLESS_MODEL || "zai-org/GLM-5.3-Flash";
+const FALLBACK_MODEL =
+  process.env.TUTORIUM_LLM_FALLBACK_MODEL || "Qwen/Qwen2.5-7B-Instruct";
+const API_KEY = process.env.FEATHERLESS_API_KEY || "";
+const REQUEST_TIMEOUT_MS = 45_000;
+const MAX_RETRIES = 2;
+const INITIAL_BACKOFF_MS = 800;
+
 function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(t));
 }
 
-function extractJson(text: string): string {
-  // Strip markdown fences and grab the outermost JSON object.
+function responseFormat(): Record<string, unknown> {
+  // Ask the provider for strict JSON when it's supported; harmless otherwise.
+  return { response_format: { type: "json_object" } };
+}
+
+// Tolerant JSON extraction: strip fences, find outermost object, repair common
+// truncation/quote escapes the way a demo needs so a single bad character
+// doesn't kill the turn.
+export function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = (fenced ? fenced[1] : text).trim();
+  let candidate = (fenced ? fenced[1] : text).trim();
+
+  // Strip prose the model sometimes prepends/appends ("Here is your JSON: ...")
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
+    // Some models emit a JSON array instead — try that.
+    const as = candidate.indexOf("[");
+    const ae = candidate.lastIndexOf("]");
+    if (as !== -1 && ae > as) return candidate.slice(as, ae + 1);
     throw new LlmError("no JSON object found in LLM output");
   }
   return candidate.slice(start, end + 1);
+}
+
+async function callOnce(
+  model: string,
+  system: string,
+  user: string,
+  maxTokens: number,
+  temperature: number
+): Promise<string> {
+  const res = await fetchWithTimeout(
+    `${BASE_URL}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: `${system}\n\nRespond with ONLY a valid JSON object. No markdown fences, no commentary before or after.` },
+          { role: "user", content: user },
+        ],
+        temperature,
+        max_tokens: maxTokens,
+        ...responseFormat(),
+      }),
+    },
+    REQUEST_TIMEOUT_MS
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    // 401/403 = key problem; retrying won't help.
+    if (res.status === 401 || res.status === 403) {
+      throw new LlmError(`Featherless auth ${res.status}: ${text.slice(0, 160)}`);
+    }
+    throw new LlmError(`Featherless ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const payload = await res.json();
+  const content: string = payload.choices?.[0]?.message?.content || "";
+  if (!content) throw new LlmError("empty LLM response");
+  return content;
 }
 
 export async function llmJson<T>(args: {
@@ -44,44 +105,39 @@ export async function llmJson<T>(args: {
   maxTokens?: number;
   temperature?: number;
 }): Promise<{ data: T; runtime: LlmRuntime }> {
-  const key = API_KEY;
-  if (!key || key === "placeholder") throw new LlmError("FEATHERLESS_API_KEY not set — run `npm run env:sync`");
-
-  const res = await fetchWithTimeout(
-    `${BASE_URL}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: "system", content: `${args.system}\n\nRespond with ONLY a valid JSON object. No markdown fences, no commentary before or after.` },
-          { role: "user", content: args.user },
-        ],
-        temperature: args.temperature ?? 0.3,
-        max_tokens: args.maxTokens ?? 2000,
-      }),
-    },
-    REQUEST_TIMEOUT_MS
-  );
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new LlmError(`Featherless ${res.status}: ${text.slice(0, 300)}`);
+  if (!API_KEY || API_KEY === "placeholder") {
+    throw new LlmError("FEATHERLESS_API_KEY not set — run `npm run env:sync`");
   }
 
-  const payload = await res.json();
-  const content: string = payload.choices?.[0]?.message?.content || "";
-  if (!content) throw new LlmError("empty LLM response");
-  const runtime: LlmRuntime = {
-    provider: "featherless",
-    model: payload.model || MODEL,
-    fallback: false,
-  };
-  return { data: JSON.parse(extractJson(content)) as T, runtime };
+  const maxTokens = args.maxTokens ?? 2000;
+  const temperature = args.temperature ?? 0.3;
+  let lastErr: Error | null = null;
+
+  // primary model, with retry/backoff
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, INITIAL_BACKOFF_MS * 2 ** (attempt - 1)));
+    try {
+      const content = await callOnce(PRIMARY_MODEL, args.system, args.user, maxTokens, temperature);
+      const data = JSON.parse(extractJson(content)) as T;
+      return { data, runtime: { provider: "featherless", model: PRIMARY_MODEL, fallback: false } };
+    } catch (e) {
+      lastErr = e as Error;
+      // don't retry auth errors
+      if (e instanceof LlmError && /auth|401|403/.test(e.message)) break;
+    }
+  }
+
+  // fallback model, single attempt, best effort
+  try {
+    console.warn(`primary ${PRIMARY_MODEL} failed, falling back to ${FALLBACK_MODEL}:`, lastErr?.message);
+    const content = await callOnce(FALLBACK_MODEL, args.system, args.user, maxTokens, temperature);
+    const data = JSON.parse(extractJson(content)) as T;
+    return { data, runtime: { provider: "featherless", model: FALLBACK_MODEL, fallback: true } };
+  } catch (e) {
+    lastErr = e as Error;
+  }
+
+  throw new LlmError(`LLM failed after retries (${PRIMARY_MODEL} + ${FALLBACK_MODEL}): ${lastErr?.message}`);
 }
 
 export function llmConfigured() {
