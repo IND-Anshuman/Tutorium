@@ -1,6 +1,11 @@
 "use client";
 
-import type { InteractivePayload } from "@/lib/types";
+import type {
+  InteractivePayload,
+  InteractiveHeatmap,
+  InteractiveVocabPreview,
+  InteractiveTeachBack,
+} from "@/lib/types";
 import FlashcardDeck from "./FlashcardDeck";
 import MiniQuiz from "./MiniQuiz";
 import InfoCards from "./InfoCards";
@@ -34,12 +39,15 @@ export default function InteractiveMessage({ payload, onSayItBackRecord }: Props
     case "say_it_back":
       return <SayItBackCard payload={payload} onRecord={onSayItBackRecord} />;
     case "heatmap":
-      return <Heatmap words={(payload as any).words || []} overall={(payload as any).overall ?? 0} />;
+      return <Heatmap words={payload.words} overall={payload.overall} />;
     case "teach_back":
-      return <TeachBackCard payload={payload as any} />;
+      return <TeachBackCard payload={payload} />;
     case "vocab_preview":
-      return <VocabPreview terms={(payload as any).terms || []} />;
+      return <VocabPreview terms={payload.terms} />;
     default:
       return null;
   }
 }
+
+// Re-exporting the types so page.tsx can construct these payloads without casts.
+export type { InteractiveHeatmap, InteractiveVocabPreview, InteractiveTeachBack };

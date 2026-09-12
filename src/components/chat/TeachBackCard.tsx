@@ -1,6 +1,8 @@
 "use client";
 
-export default function TeachBackCard({ payload }: { payload: { verdict: string; missed: string[]; next_step: string; transcript: string } }) {
+import type { InteractiveTeachBack } from "@/lib/types";
+
+export default function TeachBackCard({ payload }: { payload: InteractiveTeachBack }) {
   return (
     <div className="rounded-xl p-4" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
       <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--muted)" }}>Teach-back review (Feynman mode)</div>

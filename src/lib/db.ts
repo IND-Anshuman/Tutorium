@@ -254,6 +254,26 @@ export function getTopicProgress(topicId: string): Record<string, unknown> {
   return JSON.parse(t?.progress || "{}");
 }
 
+// Most-recently-studied topic for a user, via their subjects.
+export function getLastActiveTopic(userId: string) {
+  const row = db
+    .prepare(
+      `SELECT t.*, s.name AS subject_name FROM topics t
+       JOIN subjects s ON s.id = t.subject_id
+       WHERE s.user_id = ?
+       ORDER BY t.last_studied_at DESC
+       LIMIT 1`
+    )
+    .get(userId) as any;
+  if (!row) return null;
+  return {
+    topicId: row.id,
+    topicTitle: row.title,
+    subjectName: row.subject_name,
+    subcategory: row.subcategory,
+  };
+}
+
 // ---------- materials ----------
 export function saveMaterial(
   topicId: string,

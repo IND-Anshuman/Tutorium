@@ -1,4 +1,5 @@
 import { listLibrary } from "@/lib/db";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default function LibraryPage() {
           <h2 className="text-sm font-semibold" style={{ color: "var(--accent)" }}>{s.name}</h2>
           {s.topics.length === 0 && <p className="mt-1 text-xs" style={{ color: "var(--muted)" }}>No topics yet.</p>}
           {s.topics.map((t: any) => (
-            <div key={t.id} className="mt-2 rounded-xl p-3" style={{ background: "var(--panel)", border: "1px solid var(--border)" }}>
+            <Link href={`/topic/${t.id}`} key={t.id} className="block mt-2 rounded-xl p-3 no-underline transition hover:opacity-90" style={{ background: "var(--panel)", border: "1px solid var(--border)", color: "inherit" }}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">{t.title}</span>
                 <span className="text-[10px]" style={{ color: "var(--muted)" }}>
@@ -34,7 +35,7 @@ export default function LibraryPage() {
                   </span>
                 ))}
               </div>
-            </div>
+            </Link>
           ))}
         </section>
       ))}
