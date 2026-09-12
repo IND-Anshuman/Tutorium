@@ -1,6 +1,10 @@
-// Featherless LLM client — OpenAI-compatible chat completions, Bearer auth.
-// Provider swappable in ONE place. Includes retry with backoff, a fallback model
-// chain, and tolerant JSON extraction so a bad LLM turn degrades gracefully.
+// OpenAI-compatible LLM client — provider fully configurable via env:
+//   TUTORIUM_LLM_BASE_URL      (any OpenAI-compatible /v1 endpoint)
+//   TUTORIUM_LLM_API_KEY       (defaults to FEATHERLESS_API_KEY)
+//   TUTORIUM_LLM_MODEL         (defaults to zai-org/GLM-5.3-Flash)
+//   TUTORIUM_LLM_FALLBACK_MODEL
+// So switching providers (Featherless → Token Factory / OpenRouter / Groq / etc.)
+// is purely an .env change. Retry with backoff + tolerant JSON extraction.
 
 export interface LlmMessage {
   role: "system" | "user" | "assistant";
@@ -8,7 +12,7 @@ export interface LlmMessage {
 }
 
 export interface LlmRuntime {
-  provider: "featherless";
+  provider: string;
   model: string;
   fallback: boolean;
 }
@@ -16,12 +20,24 @@ export interface LlmRuntime {
 export class LlmError extends Error {}
 
 const BASE_URL = (process.env.TUTORIUM_LLM_BASE_URL || "https://api.featherless.ai/v1").replace(/\/$/, "");
+const LLM_PROVIDER =
+  (() => {
+    try {
+      const host = new URL(BASE_URL).hostname || "";
+      // "api.tokfactory.ai" -> "tokfactory", "openrouter.ai" -> "openrouter"
+      const parts = host.split(".");
+      const label = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+      return label === "api" || !label ? (parts[0] || "openai-compatible") : label;
+    } catch {
+      return "openai-compatible";
+    }
+  })();
 const PRIMARY_MODEL =
   process.env.TUTORIUM_LLM_MODEL || process.env.FEATHERLESS_MODEL || "zai-org/GLM-5.3-Flash";
 const FALLBACK_MODEL =
   process.env.TUTORIUM_LLM_FALLBACK_MODEL || "Qwen/Qwen2.5-7B-Instruct";
-const API_KEY = process.env.FEATHERLESS_API_KEY || "";
-const REQUEST_TIMEOUT_MS = 45_000;
+const API_KEY = process.env.TUTORIUM_LLM_API_KEY || process.env.FEATHERLESS_API_KEY || "";
+const REQUEST_TIMEOUT_MS = Number(process.env.TUTORIUM_LLM_TIMEOUT_MS || 45_000);
 const MAX_RETRIES = 2;
 const INITIAL_BACKOFF_MS = 800;
 
@@ -106,7 +122,7 @@ export async function llmJson<T>(args: {
   temperature?: number;
 }): Promise<{ data: T; runtime: LlmRuntime }> {
   if (!API_KEY || API_KEY === "placeholder") {
-    throw new LlmError("FEATHERLESS_API_KEY not set — run `npm run env:sync`");
+    throw new LlmError("No LLM API key set (TUTORIUM_LLM_API_KEY or FEATHERLESS_API_KEY) — run `npm run env:sync`");
   }
 
   const maxTokens = args.maxTokens ?? 2000;
@@ -119,7 +135,7 @@ export async function llmJson<T>(args: {
     try {
       const content = await callOnce(PRIMARY_MODEL, args.system, args.user, maxTokens, temperature);
       const data = JSON.parse(extractJson(content)) as T;
-      return { data, runtime: { provider: "featherless", model: PRIMARY_MODEL, fallback: false } };
+      return { data, runtime: { provider: LLM_PROVIDER, model: PRIMARY_MODEL, fallback: false } };
     } catch (e) {
       lastErr = e as Error;
       // don't retry auth errors
@@ -132,7 +148,7 @@ export async function llmJson<T>(args: {
     console.warn(`primary ${PRIMARY_MODEL} failed, falling back to ${FALLBACK_MODEL}:`, lastErr?.message);
     const content = await callOnce(FALLBACK_MODEL, args.system, args.user, maxTokens, temperature);
     const data = JSON.parse(extractJson(content)) as T;
-    return { data, runtime: { provider: "featherless", model: FALLBACK_MODEL, fallback: true } };
+    return { data, runtime: { provider: LLM_PROVIDER, model: FALLBACK_MODEL, fallback: true } };
   } catch (e) {
     lastErr = e as Error;
   }
@@ -142,4 +158,9 @@ export async function llmJson<T>(args: {
 
 export function llmConfigured() {
   return Boolean(API_KEY && API_KEY !== "placeholder");
+}
+
+// Human/provider label for surfacing in API responses + the health check.
+export function llmRuntimeLabel() {
+  return llmConfigured() ? LLM_PROVIDER : "not-configured";
 }

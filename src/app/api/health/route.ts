@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { llmConfigured } from "@/lib/llm";
+import { llmConfigured, llmRuntimeLabel } from "@/lib/llm";
 import { speechmaticsConfigured } from "@/lib/speechmatics";
 import db from "@/lib/db";
 
@@ -13,7 +13,7 @@ export async function GET() {
   }
   return NextResponse.json({
     ok: dbOk,
-    llm: llmConfigured() ? "featherless" : "not-configured",
+    llm: llmRuntimeLabel(),
     stt: speechmaticsConfigured() ? "speechmatics" : "not-configured",
   });
 }

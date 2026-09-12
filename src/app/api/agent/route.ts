@@ -14,6 +14,7 @@ import {
   asInteractive,
 } from "@/lib/db";
 import { classifyMessage, updateMemory, applyMemoryUpdate } from "@/lib/agents";
+import { llmRuntimeLabel } from "@/lib/llm";
 import { orchestrateTurn, type OrcCtx } from "@/lib/orchestrate";
 import { startJobRunner } from "@/lib/jobrunner";
 import type { ChatMessage } from "@/lib/types";
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
       subjectId: subject.id,
       subjectName: subject.name,
       intent: result.intent,
-      runtime: "featherless",
+      runtime: llmRuntimeLabel(),
     });
   } catch (err) {
     console.error("agent error:", err);
