@@ -1,16 +1,22 @@
 // Core orchestration: run one turn against a resolved topic.
 // Shared by the sync /api/agent route and the background study-pack job so both
 // behave identically. Pure-ish: takes db-bound helpers as args for testability.
+//
+// Token-efficiency: a persisted "brief" (compact scene summary) is the single
+// source of grounding for teach/visual/quiz/teachback once a study pack exists,
+// instead of each call re-sending raw notes.
+
 import {
   createStudyPack,
+  createFlashcardsOnly,
+  createQuizOnly,
   teachTopic,
   generateVisual,
+  gradeTeachBack,
+  generateSceneBrief,
 } from "./agents";
 import { pickVocabTerms } from "./vocab";
-import {
-  buildStudyPackActions,
-  buildStudyPackConfirmation,
-} from "./replies";
+import { buildStudyPackActions, buildStudyPackConfirmation } from "./replies";
 import type { Classification, ChatMessage, InteractivePayload, Intent } from "./types";
 
 export interface OrchestrateResult {
@@ -32,30 +38,49 @@ export interface OrcCtx {
   message: string;
 }
 
+// Getter for the scene brief (or fall back to stored notes / the raw message).
+function getBrief(ctx: OrcCtx): string {
+  const b = ctx.getMaterial(ctx.topicId, "brief")?.content?.text as string | undefined;
+  if (b) return b;
+  return (
+    ctx.getMaterial(ctx.topicId, "clean_notes")?.content?.text ||
+    ctx.getMaterial(ctx.topicId, "reviewer")?.content?.text ||
+    ctx.message
+  );
+}
+
 export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
   const { classification, topicId, topicTitle, subjectName, message } = ctx;
-  const sourceText: string =
-    ctx.getMaterial(topicId, "clean_notes")?.content?.text ||
-    ctx.getMaterial(topicId, "reviewer")?.content?.text ||
-    message;
 
   switch (classification.intent) {
     case "create_study_pack": {
-      const pack = await createStudyPack({
+      // 1) build + persist one scene brief (compacted context reused by all later agents)
+      const brief = await generateSceneBrief({
         topic: topicTitle,
         subject: subjectName,
         sourceText: message,
       });
-      ctx.saveMaterial(topicId, "clean_notes", `${topicTitle} — Clean Notes`, { text: pack.clean_notes });
-      ctx.saveMaterial(topicId, "reviewer", `${topicTitle} — Reviewer`, { text: pack.reviewer });
-      ctx.saveMaterial(topicId, "flashcards", `${topicTitle} — Flashcards`, { cards: pack.flashcards });
-      ctx.saveMaterial(topicId, "quiz", `${topicTitle} — Quiz`, { questions: pack.quiz });
-      ctx.saveMaterial(topicId, "summary", `${topicTitle} — Summary`, { text: pack.summary });
+      ctx.saveMaterial(topicId, "brief", `${topicTitle} — Brief`, {
+        text: brief.brief,
+        keyTerms: brief.keyTerms,
+      });
+
+      // 2) generate pack (split, isolated sub-calls), save each section independently
+      const pack = await createStudyPack({
+        topic: topicTitle,
+        subject: subjectName,
+        brief: brief.brief,
+      });
+      if (pack.clean_notes) ctx.saveMaterial(topicId, "clean_notes", `${topicTitle} — Clean Notes`, { text: pack.clean_notes });
+      if (pack.reviewer) ctx.saveMaterial(topicId, "reviewer", `${topicTitle} — Reviewer`, { text: pack.reviewer });
+      if (pack.flashcards?.length) ctx.saveMaterial(topicId, "flashcards", `${topicTitle} — Flashcards`, { cards: pack.flashcards });
+      if (pack.quiz?.length) ctx.saveMaterial(topicId, "quiz", `${topicTitle} — Quiz`, { questions: pack.quiz });
+      if (pack.summary) ctx.saveMaterial(topicId, "summary", `${topicTitle} — Summary`, { text: pack.summary });
       if (pack.story) ctx.saveMaterial(topicId, "story", `${topicTitle} — Story`, { text: pack.story });
 
-      const vocab = pickVocabTerms(pack.clean_notes + "\n" + pack.summary, 12);
+      const vocab = pack.summary ? pickVocabTerms(pack.summary, 12) : brief.keyTerms.map((t: string) => ({ term: t, reason: "" }));
       ctx.saveMaterial(topicId, "sayitback", `${topicTitle} — Say-It-Back passage`, {
-        passage: pack.summary,
+        passage: pack.summary || brief.brief,
         keyTerms: vocab.map((v) => v.term),
       });
 
@@ -75,11 +100,15 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
           intent: "make_flashcards",
         };
       }
-      const pack = await createStudyPack({ topic: topicTitle, subject: subjectName, sourceText });
-      ctx.saveMaterial(topicId, "flashcards", `${topicTitle} — Flashcards`, { cards: pack.flashcards });
+      const brief = getBrief(ctx);
+      const cards = await createFlashcardsOnly({ topic: topicTitle, brief });
+      if (!cards?.length) {
+        return { reply: `I couldn't build flashcards for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_flashcards" };
+      }
+      ctx.saveMaterial(topicId, "flashcards", `${topicTitle} — Flashcards`, { cards });
       return {
         reply: `Fresh flashcards for **${topicTitle}**.`,
-        interactive: { type: "flashcards", topic: topicTitle, topicId, cards: pack.flashcards },
+        interactive: { type: "flashcards", topic: topicTitle, topicId, cards },
         intent: "make_flashcards",
       };
     }
@@ -93,11 +122,15 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
           intent: "make_quiz",
         };
       }
-      const pack = await createStudyPack({ topic: topicTitle, subject: subjectName, sourceText });
-      ctx.saveMaterial(topicId, "quiz", `${topicTitle} — Quiz`, { questions: pack.quiz });
+      const brief = getBrief(ctx);
+      const questions = await createQuizOnly({ topic: topicTitle, brief });
+      if (!questions?.length) {
+        return { reply: `I couldn't build a quiz for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_quiz" };
+      }
+      ctx.saveMaterial(topicId, "quiz", `${topicTitle} — Quiz`, { questions });
       return {
         reply: `Quiz time — ${topicTitle}.`,
-        interactive: { type: "quiz", topic: topicTitle, topicId, questions: pack.quiz },
+        interactive: { type: "quiz", topic: topicTitle, topicId, questions },
         intent: "make_quiz",
       };
     }
@@ -125,19 +158,13 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
       if (m?.content?.html) {
         return {
           reply: `Here's the visual guide for **${topicTitle}**.`,
-          interactive: {
-            type: "html_visual",
-            topic: topicTitle,
-            topicId,
-            title: m.content.title || `${topicTitle} visual`,
-            html: m.content.html,
-          },
+          interactive: { type: "html_visual", topic: topicTitle, topicId, title: m.content.title || `${topicTitle} visual`, html: m.content.html },
           intent: "make_visual",
         };
       }
-      // Actually generate the HTML visual from existing notes.
-      if (sourceText && sourceText.length > 20) {
-        const viz = await generateVisual({ topic: topicTitle, subject: subjectName, sourceText });
+      const brief = getBrief(ctx);
+      if (brief && brief.length > 20) {
+        const viz = await generateVisual({ topic: topicTitle, subject: subjectName, brief });
         ctx.saveMaterial(topicId, "html_visual", viz.title, { title: viz.title, html: viz.html });
         return {
           reply: `Here's the visual guide for **${topicTitle}**.`,
@@ -192,7 +219,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         question: message,
         history: ctx.history,
         profile: ctx.profile || undefined,
-        sourceText,
+        brief: getBrief(ctx),
       });
       if (taught.keyTerms?.length) {
         ctx.saveMaterial(topicId, "sayitback", `${topicTitle} — Say-It-Back passage`, {

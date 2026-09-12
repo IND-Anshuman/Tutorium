@@ -1,34 +1,27 @@
 // Agent pipeline — the PADAYON orchestrator pattern, tightened for a voice-first tutor.
 // All LLM access goes through llm.ts; all persistence through db.ts.
+//
+// Token-efficiency design:
+//  - ONE scene brief per topic: a compact ~120-word summary generated once, then
+//    reused by teach/visual/quiz instead of re-sending raw notes every call (olig. #2).
+//  - Study-pack generation is SPLIT into isolated small calls (notes/review, cards/quiz,
+//    story) so a failure in one never kills the pack and output stays lean (#4).
+//  - Compact system prompts, resent on every call so they're a fixed tax (#5).
 
 import { llmJson } from "./llm";
-import {
-  Classification,
-  StudyPack,
-  Flashcard,
-  QuizItem,
-  MemoryUpdate,
-  ChatMessage,
-} from "./types";
+import type { Classification, StudyPack, Flashcard, QuizItem, MemoryUpdate, ChatMessage } from "./types";
 
 // ---------- classifier ----------
 export async function classifyMessage(message: string, history: ChatMessage[]): Promise<Classification> {
   const { data } = await llmJson<Classification>({
-    system: `You classify student messages for a voice-first tutor.
-Return JSON: {"subject": string, "subcategory": string, "topic": string, "intent": string, "confidence": number}
-intent must be exactly one of:
-- "create_study_pack": messy notes/dump pasted or spoken → organize into study materials
-- "teach_topic": student wants an explanation
-- "make_flashcards" / "make_quiz" / "make_summary" / "make_story" / "make_visual": material requests
-- "retrieve_material": asking to see previously created material
-- "say_it_back": student wants to read/explain aloud for pronunciation/fluency practice
-- "unknown": anything else
-Use "General" for subject when unclear. Keep topic short (2-5 words).`,
-    user: `History (last 6 turns):\n${history
-      .slice(-6)
-      .map((m) => `${m.role}: ${m.content.slice(0, 160)}`)
-      .join("\n") || "(none)"}\n\nStudent message: """${message.slice(0, 1200)}"""`,
-    maxTokens: 400,
+    system: `Classify the student message. Return JSON {"subject","subcategory","topic","intent","confidence"}.
+intent ∈ {create_study_pack, teach_topic, make_flashcards, make_quiz, make_summary, make_story, make_visual, retrieve_material, say_it_back, unknown}.
+Notes/messy dump -> create_study_pack. Material request -> make_*. "show me what I have" -> retrieve_material. Subject="General" if unclear. Topic: 2-5 words.`,
+    user: `${history
+      .slice(-3) // intent rarely needs 6 turns; keep context tight
+      .map((m) => `${m.role}: ${m.content.slice(0, 120)}`)
+      .join("\n")}${history.length ? "\n\n" : ""}Student message: """${message.slice(0, 1200)}"""`,
+    maxTokens: 250,
   });
   return {
     subject: data.subject || "General",
@@ -39,36 +32,93 @@ Use "General" for subject when unclear. Keep topic short (2-5 words).`,
   };
 }
 
-// ---------- study pack ----------
-export async function createStudyPack(args: {
+// ---------- scene brief (olig. #2) ----------
+// Compact once-per-topic context; every later agent reads this instead of raw notes.
+export async function generateSceneBrief(args: {
   topic: string;
   subject: string;
   sourceText: string;
-  gradeLevel?: string;
-}): Promise<StudyPack> {
-  const { data } = await llmJson<{ clean_notes: string; reviewer: string; flashcards: Flashcard[]; quiz: QuizItem[]; summary: string; story?: string }>({
-    system: `You create a study pack for a student on ONE topic from their messy source notes.
-Return JSON: {"clean_notes": markdown string, "reviewer": markdown string, "flashcards": [{"front","back"}] (6-10), "quiz": [{"question","choices":[4 strings],"answer":"0"|"1"|"2"|"3" (index of correct choice),"explanation"}] (4-6), "summary": 3-4 sentences, "story": a short memorable story/analogy that teaches the core idea (6-10 sentences)}.
-Rules: accurate, grade-appropriate, no filler; quiz answer MUST be the index string of the correct choice.`,
-    user: `Topic: ${args.topic}\nSubject: ${args.subject}\nGrade level: ${args.gradeLevel || "high school"}\n\nMessy source notes from the student:\n"""${args.sourceText.slice(0, 6000)}"""`,
-    maxTokens: 3500,
+}): Promise<{ brief: string; keyTerms: string[] }> {
+  const { data } = await llmJson<{ brief: string; key_terms: string[] }>({
+    system: `Summarize the source into a tight study-passage for a tutor.
+Return JSON: {"brief": <=120 words covering only the core concepts a tutor needs, "key_terms": [4-8 domain terms]}. No markdown.`,
+    user: `Topic: ${args.topic} (${args.subject})\nSource:\n"""${args.sourceText.slice(0, 4000)}"""`,
+    maxTokens: 320,
+    temperature: 0.2,
   });
+  return { brief: data.brief || "", keyTerms: (data.key_terms || []).map(String).slice(0, 8) };
+}
 
-  const quiz: QuizItem[] = (data.quiz || []).map((q) => ({
-    question: q.question,
-    choices: Array.isArray(q.choices) ? q.choices.map(String) : [],
-    answer: String(q.answer),
-    explanation: q.explanation || "",
-  }));
+// ---------- study pack (SPLIT, olig. #4) ----------
+// Each sub-call is small and isolated; orchestrate saves them incrementally so a
+// partial pack survives. All consume the compact brief, not raw notes.
 
+async function packCore(args: { topic: string; subject: string; brief: string }): Promise<{ clean_notes: string; reviewer: string; summary: string }> {
+  const { data } = await llmJson<{ clean_notes: string; reviewer: string; summary: string }>({
+    system: `Write a study pack core for the topic. Return JSON {"clean_notes": markdown, "reviewer": concise bullet recap, "summary": 3-4 sentences}.
+Accurate, grade-appropriate, no filler.`,
+    user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""`,
+    maxTokens: 1100,
+  });
+  return { clean_notes: data.clean_notes || "", reviewer: data.reviewer || "", summary: data.summary || "" };
+}
+
+async function packAssess(args: { topic: string; brief: string }): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
+  const { data } = await llmJson<{ flashcards: Flashcard[]; quiz: QuizItem[] }>({
+    system: `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (6), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation"}] (4)}.
+answer MUST be the index string of the correct choice.`,
+    user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
+    maxTokens: 900,
+  });
   return {
-    clean_notes: data.clean_notes || "",
-    reviewer: data.reviewer || "",
     flashcards: (data.flashcards || []).map((f) => ({ front: f.front, back: f.back })),
-    quiz,
-    summary: data.summary || "",
-    story: data.story || "",
+    quiz: (data.quiz || []).map((q) => ({
+      question: q.question,
+      choices: Array.isArray(q.choices) ? q.choices.map(String) : [],
+      answer: String(q.answer),
+      explanation: q.explanation || "",
+    })),
   };
+}
+
+async function packStory(args: { topic: string; brief: string }): Promise<string> {
+  const { data } = await llmJson<{ story: string }>({
+    system: `Write a short memorable story/analogy teaching the topic's core idea. Return JSON {"story": 6-10 sentences}. Plain text, no markdown.`,
+    user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
+    maxTokens: 400,
+  });
+  return data.story || "";
+}
+
+export async function createStudyPack(args: {
+  topic: string;
+  subject: string;
+  brief: string;
+}): Promise<StudyPack> {
+  const [core, assess, story] = await Promise.all([
+    packCore({ topic: args.topic, subject: args.subject, brief: args.brief }),
+    packAssess({ topic: args.topic, brief: args.brief }),
+    packStory({ topic: args.topic, brief: args.brief }),
+  ]);
+  return {
+    clean_notes: core.clean_notes,
+    reviewer: core.reviewer,
+    summary: core.summary,
+    flashcards: assess.flashcards,
+    quiz: assess.quiz,
+    story,
+  };
+}
+
+// For on-demand requests (just flashcards / just quiz) when no pack exists yet.
+export async function createFlashcardsOnly(args: { topic: string; brief: string }): Promise<Flashcard[]> {
+  const { flashcards } = await packAssess({ topic: args.topic, brief: args.brief });
+  return flashcards;
+}
+
+export async function createQuizOnly(args: { topic: string; brief: string }): Promise<QuizItem[]> {
+  const { quiz } = await packAssess({ topic: args.topic, brief: args.brief });
+  return quiz;
 }
 
 // ---------- teaching ----------
@@ -78,24 +128,16 @@ export async function teachTopic(args: {
   question: string;
   history: ChatMessage[];
   profile?: { learning_style: string; weaknesses: string[]; strengths: string[] } | null;
-  sourceText?: string;
+  brief?: string;
 }): Promise<{ reply: string; keyTerms: string[] }> {
   const { data } = await llmJson<{ reply: string; key_terms: string[] }>({
-    system: `You are Tutorium, a warm voice-first tutor. The student may be listening, not reading — so:
-- start with the core idea in one sentence
-- explain in short spoken-style paragraphs
-- use a concrete analogy
-- end by inviting a follow-up
-- if the student has weaknesses, address them; if they prefer a style, use it
-Return JSON: {"reply": string (markdown, ~180-280 words), "key_terms": [4-8 important terms you used]}`,
-    user: `Topic: ${args.topic} (Subject: ${args.subject})
-Student profile: style=${args.profile?.learning_style || "unknown"}; weaknesses=${(args.profile?.weaknesses || []).join(", ") || "none"}; strengths=${(args.profile?.strengths || []).join(", ") || "none"}
-${args.sourceText ? `Source notes context:\n"""${args.sourceText.slice(0, 3000)}"""\n` : ""}
-Recent conversation:
-${args.history.slice(-6).map((m) => `${m.role}: ${m.content.slice(0, 200)}`).join("\n")}
-
-Student asks: """${args.question.slice(0, 1200)}"""`,
-    maxTokens: 1200,
+    system: `You are Tutorium, a warm voice-first tutor. The student is listening, not reading: core idea first, short spoken paragraphs, one analogy, invite a follow-up. Address weaknesses if given.
+Return JSON {"reply": markdown ~150-220 words, "key_terms": [4-8 terms you used]}.`,
+    user: `Topic: ${args.topic} (${args.subject})
+Learning style: ${args.profile?.learning_style || "unknown"}; weaknesses: ${(args.profile?.weaknesses || []).join(", ") || "none"}; strengths: ${(args.profile?.strengths || []).join(", ") || "none"}
+${args.brief ? `Context:\n"""${args.brief}"""\n` : ""}
+Student: """${args.question.slice(0, 1200)}"""`,
+    maxTokens: 900,
   });
   return { reply: data.reply || "", keyTerms: (data.key_terms || []).map(String).slice(0, 8) };
 }
@@ -107,12 +149,12 @@ export async function updateMemory(args: {
   profile: { learning_style: string; strengths: string[]; weaknesses: string[] };
 }): Promise<MemoryUpdate> {
   const { data } = await llmJson<MemoryUpdate>({
-    system: `You update a learner profile from one exchange.
-Return JSON: {"learning_style_update": string (or "" to keep), "strength_update": string (or ""), "weakness_update": string (or ""), "next_recommended_action": string, "student_note": one-sentence memory worth keeping about this student}`,
-    user: `Current profile: style=${args.profile.learning_style}; strengths=${args.profile.strengths.join(", ") || "none"}; weaknesses=${args.profile.weaknesses.join(", ") || "none"}
-Student said: """${args.message.slice(0, 800)}"""
-Tutor replied: """${args.reply.slice(0, 800)}"""`,
-    maxTokens: 500,
+    system: `From one exchange, update a learner profile. Return JSON {"learning_style_update":"", "strength_update":"", "weakness_update":"", "next_recommended_action":"", "student_note":""}.
+Empty string = no change. Only fill fields with a real signal.`,
+    user: `Profile: style=${args.profile.learning_style}; strengths=${args.profile.strengths.join(", ") || "none"}; weaknesses=${args.profile.weaknesses.join(", ") || "none"}
+Student: """${args.message.slice(0, 500)}"""
+Tutor: """${args.reply.slice(0, 500)}"""`,
+    maxTokens: 300,
   });
   return {
     learning_style_update: data.learning_style_update || "",
@@ -123,6 +165,7 @@ Tutor replied: """${args.reply.slice(0, 800)}"""`,
   };
 }
 
+// ---------- apply memory ----------
 export function applyMemoryUpdate(
   profile: { learning_style: string; strengths: string[]; weaknesses: string[] },
   update: MemoryUpdate
@@ -142,50 +185,55 @@ export function applyMemoryUpdate(
   };
 }
 
-// ---------- visual designer (produces real HTML, not a stub) ----------
+// ---------- visual ----------
 export async function generateVisual(args: {
   topic: string;
   subject: string;
-  sourceText: string;
+  brief: string;
 }): Promise<{ html: string; title: string }> {
   const { data } = await llmJson<{ title: string; html: string }>({
-    system: `You design an engaging self-contained HTML visual for a lesson so a student can understand it at a glance.
-Generate a SINGLE clean HTML snippet using ONLY these inline-safe pieces:
-- Semantic elements: h1/h2, p, ul/li, table
-- One <style> block with a dark-on-light palette you choose
-- Optional inline <svg> for a simple diagram
-NO external CSS/JS, NO script tags, NO <html>/<body>/<head> wrapper, NO iframes. Keep it under ~60 lines.
-Return JSON: {"title": string, "html": string}`,
-    user: `Topic: ${args.topic} (Subject: ${args.subject})
-Source material:
-"""${String(args.sourceText).slice(0, 3000)}"""`,
-    maxTokens: 1600,
+    system: `Design a self-contained HTML visual for a lesson. Only: h1/h2, p, ul/li, table, one <style>, optional inline <svg>. NO scripts, NO <html>/<body>, NO iframes. <60 lines.
+Return JSON {"title","html"}.`,
+    user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""`,
+    maxTokens: 1200,
     temperature: 0.2,
   });
   const html = (data.html || "").replace(/<script[\s\S]*?<\/script>/gi, "").slice(0, 8000);
   return { html, title: data.title || `${args.topic} — Visual Guide` };
 }
 
-// ---------- teach-back grader (Feynman mode) ----------
+// ---------- teach-back ----------
 export async function gradeTeachBack(args: {
   topic: string;
   transcript: string;
-  sourceText: string;
+  brief: string;
 }): Promise<{ verdict: string; missed: string[]; next_step: string }> {
   const { data } = await llmJson<{ verdict: string; missed: string[]; next_step: string }>({
-    system: `A student tried to explain a topic in their own words (Feynman technique). Grade the explanation against the source material.
-Return JSON: {"verdict": 1-2 sentence assessment, "missed": [2-4 key points they skipped or got wrong, phrased as short points], "next_step": one concrete action for the student}`,
-    user: `Topic: ${args.topic}
-Source material (ground truth):
-"""${args.sourceText.slice(0, 4000)}"""
-
-Student's spoken explanation (transcript):
-"""${args.transcript.slice(0, 3000)}"""`,
-    maxTokens: 700,
+    system: `A student explained the topic (Feynman). Grade against the brief. Return JSON {"verdict": 1-2 sentences, "missed": [2-4 short points], "next_step": one action}.`,
+    user: `Topic: ${args.topic}\nGround truth:\n"""${args.brief}"""\n\nStudent:
+"""${args.transcript.slice(0, 2500)}"""`,
+    maxTokens: 500,
   });
   return {
     verdict: data.verdict || "",
     missed: (data.missed || []).map(String).slice(0, 4),
     next_step: data.next_step || "",
   };
+}
+
+// ---------- memory-worthy gate (olig. #1) ----------
+// Only fire the memory LLM call when the exchange carries a durable signal.
+const WORTHY_PATTERN =
+  /\b(i am|i'm|im|i want|i like|i prefer|my goal|struggle|hard for me|don't understand|dont understand|not good at|weak in|learn better|best way|could you|please help|bad day|good day|i got|i scored|test tomorrow|exam|prefer)\b/i;
+
+export function isMemoryWorthy(message: string, reply: string): boolean {
+  const msg = (message || "").slice(0, 400).toLowerCase();
+  const rep = (reply || "").slice(0, 400).toLowerCase();
+  // a correction / wrong-answer signal that matters
+  if (/\b(no,? that's wrong|actually|wait,? that|wrong answer|i thought|but you said|hmm not)\b/i.test(msg)) return true;
+  // a stated preference, goal, or self-assessment
+  if (WORTHY_PATTERN.test(msg)) return true;
+  // tutor inferred a weak area worth recording
+  if (/\byou seem|you've been struggling|let's work on|try this\b/i.test(rep)) return true;
+  return false;
 }

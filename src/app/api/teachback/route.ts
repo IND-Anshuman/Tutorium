@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { llmJson } from "@/lib/llm";
+import { gradeTeachBack } from "@/lib/agents";
 import { getMaterial, saveMaterial, saveMessage } from "@/lib/db";
 
 export const maxDuration = 120;
 
 // Teach-Back: student explains the topic aloud -> transcript (client got it from
-// /api/stt) -> LLM grades it against the saved notes.
+// /api/stt) -> LLM grades it against the saved brief/notes.
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
@@ -17,31 +17,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "topicId and transcript required" }, { status: 400 });
     }
 
-    const notes =
+    // Prefer the compact scene brief; fall back to stored notes.
+    const brief =
+      getMaterial(body.topicId, "brief")?.content?.text ||
       getMaterial(body.topicId, "clean_notes")?.content?.text ||
       getMaterial(body.topicId, "reviewer")?.content?.text ||
       getMaterial(body.topicId, "summary")?.content?.text;
 
-    if (!notes) {
+    if (!brief) {
       return NextResponse.json({ error: "no study material for this topic yet — create a study pack first" }, { status: 400 });
     }
 
-    const grading = await llmJson<{ verdict: string; missed: string[]; next_step: string }>({
-      system: `A student tried to explain a topic in their own words (Feynman technique). Grade the explanation against the source material.
-Return JSON: {"verdict": 1-2 sentence assessment, "missed": [2-4 key points they skipped or got wrong], "next_step": one concrete action}`,
-      user: `Source material:
-"""${String(notes).slice(0, 4000)}"""
-
-Student's spoken explanation:
-"""${body.transcript.slice(0, 3000)}"""`,
-      maxTokens: 700,
+    const grading = await gradeTeachBack({
+      topic: "this topic",
+      transcript: body.transcript,
+      brief: String(brief),
     });
 
     saveMaterial(body.topicId, "teachback", "Teach-back review", {
       transcript: body.transcript,
-      verdict: grading.data.verdict,
-      missed: grading.data.missed,
-      next_step: grading.data.next_step,
+      verdict: grading.verdict,
+      missed: grading.missed,
+      next_step: grading.next_step,
     });
 
     const interactive = {
@@ -49,19 +46,14 @@ Student's spoken explanation:
       topic: "Teach-back review",
       topicId: body.topicId,
       transcript: body.transcript,
-      verdict: grading.data.verdict,
-      missed: grading.data.missed,
-      next_step: grading.data.next_step,
+      verdict: grading.verdict,
+      missed: grading.missed,
+      next_step: grading.next_step,
     };
 
-    saveMessage(body.topicId, "assistant", grading.data.verdict, { type: "teach_back", topic: "Teach-back review", topicId: body.topicId, transcript: body.transcript, verdict: grading.data.verdict, missed: grading.data.missed, next_step: grading.data.next_step });
+    saveMessage(body.topicId, "assistant", grading.verdict, interactive);
 
-    return NextResponse.json({
-      verdict: grading.data.verdict,
-      missed: grading.data.missed,
-      next_step: grading.data.next_step,
-      interactive,
-    });
+    return NextResponse.json({ ...grading, interactive });
   } catch (err) {
     console.error("teachback error:", err);
     return NextResponse.json({ error: (err as Error).message || "teachback failed" }, { status: 500 });

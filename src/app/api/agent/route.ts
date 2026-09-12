@@ -13,7 +13,7 @@ import {
   createJob,
   asInteractive,
 } from "@/lib/db";
-import { classifyMessage, updateMemory, applyMemoryUpdate } from "@/lib/agents";
+import { classifyMessage, updateMemory, applyMemoryUpdate, isMemoryWorthy } from "@/lib/agents";
 import { llmRuntimeLabel } from "@/lib/llm";
 import { orchestrateTurn, type OrcCtx } from "@/lib/orchestrate";
 import { startJobRunner } from "@/lib/jobrunner";
@@ -63,18 +63,24 @@ export async function POST(req: NextRequest) {
       .slice(-10)
       .map((m: any) => ({ role: m.role, content: m.content }));
 
-    let classification = await classifyMessage(message, history);
     let subject: any;
     let topic: any;
-
     if (body.topicId) {
       const t = getTopic(body.topicId);
       const s = t ? getSubject(t.subject_id) : null;
       if (t && s) {
         subject = s;
         topic = t;
-        classification = { ...classification, subject: s.name, topic: t.title };
       }
+    }
+
+    // #3 token opt: when the topic is already locked, the classifier only needs
+    // to pick an INTENT (subject/topic are overridden below) — drop history and
+    // the full message-width so this cheap call stays cheap.
+    let classification = await classifyMessage(message, topic ? [] : history);
+
+    if (subject && topic) {
+      classification = { ...classification, subject: subject.name, topic: topic.title };
     }
     if (!topic) {
       subject = findOrCreateSubject(userId, classification.subject);
@@ -123,8 +129,11 @@ export async function POST(req: NextRequest) {
     const result = await orchestrateTurn(ctx);
     const reply = result.reply;
 
-    // ---- fire-and-forget memory update (don't block the reply) ----
-    updateMemoryAsync(userId, profile, message, reply);
+    // #1 token opt: only fire the memory LLM call when the exchange carries a
+    // durable signal (correction, stated goal, self-assessment, inferred struggle).
+    if (isMemoryWorthy(message, reply)) {
+      updateMemoryAsync(userId, profile, message, reply);
+    }
 
     saveMessage(topic.id, "assistant", reply, asInteractive(result.interactive));
 
