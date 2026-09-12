@@ -39,7 +39,7 @@ export default function InteractiveMessage({ payload, onSayItBackRecord }: Props
     case "say_it_back":
       return <SayItBackCard payload={payload} onRecord={onSayItBackRecord} />;
     case "heatmap":
-      return <Heatmap words={payload.words} overall={payload.overall} />;
+      return <Heatmap {...payload} />;
     case "teach_back":
       return <TeachBackCard payload={payload} />;
     case "vocab_preview":

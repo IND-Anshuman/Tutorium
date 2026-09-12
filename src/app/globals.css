@@ -2,25 +2,261 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Tutorium — design system
+  Aesthetic: "Late-night study nook" — warm lamp-glow amber against velvety
+  green-black. Calm, focused, voice-forward. Distinctive (never the generic
+  blue/purple AI palette). Product register: design serves the task.
+
+  Palette authored in OKLCH for perceptual consistency. Anchored on the brand
+  green seed (oklch 0.750 0.090 140); warm amber is the lamp/voice accent.
+*/
+
 :root {
-  --bg: #0b0e14;
-  --panel: #11151f;
-  --border: #232a3a;
-  --text: #e8ecf4;
-  --muted: #8b93a7;
-  --accent: #6ea8fe;
-  --accent-2: #7ee0a3;
-  --warn: #f2b357;
-  --miss: #f2708a;
+  color-scheme: dark;
+
+  /* ── brand + surface (green-black) ─────────────────────────── */
+  --bg:          oklch(0.140 0.016 145); /* page ground — deep green-black */
+  --surface:     oklch(0.182 0.020 148); /* panels, bubbles, cards */
+  --surface-2:   oklch(0.220 0.023 150); /* raised: hover, top surfaces */
+  --surface-3:   oklch(0.252 0.025 152); /* inset / wells */
+  --border:      oklch(0.275 0.028 152); /* hairline dividers */
+  --border-strong: oklch(0.335 0.034 152);
+
+  /* ── ink (warm-tinted text, green-leaning) ─────────────────── */
+  --ink:         oklch(0.930 0.013 138); /* primary text — near-warm-white */
+  --ink-2:       oklch(0.745 0.022 145); /* secondary text */
+  --ink-3:       oklch(0.600 0.024 150); /* tertiary / caption text */
+
+  /* ── brand + semantics ─────────────────────────────────────── */
+  --brand:       oklch(0.720 0.120 148); /* primary action, active, focus */
+  --brand-hover: oklch(0.780 0.115 150);
+  --brand-ink:   oklch(0.140 0.020 150); /* text on brand fills */
+
+  --lamp:        oklch(0.805 0.120 78);  /* warm lamp-glow accent — voice! */
+  --lamp-ink:    oklch(0.180 0.030 70);  /* text on lamp fills */
+  --lamp-soft:   oklch(0.30 0.045 78);   /* glow wash for active mic */
+
+  --success:     oklch(0.740 0.130 155);
+  --warning:     oklch(0.790 0.120 75);
+  --danger:      oklch(0.660 0.155 25);
+  --danger-soft: oklch(0.30 0.070 25);
+  --info:        oklch(0.720 0.090 230);
+
+  /* ── semantics cast ─────────────────────────────────────────── */
+  --on-surface:   var(--ink);
+  --on-brand:     var(--brand-ink);
+  --on-lamp:      var(--lamp-ink);
+
+  /* ── focus ─────────────────────────────────────────────────── */
+  --focus-ring:  var(--brand);
+  --focus-ring-offset: 2px;
+
+  /* ── typography (system stack — one tuned family, product register) */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --text-xs:   0.75rem;   /* 12 caption */
+  --text-sm:   0.8125rem; /* 13 secondary */
+  --text-base: 0.9375rem; /* 15 body */
+  --text-md:   1.0625rem; /* 17 */
+  --text-lg:   1.25rem;   /* 20 h3 */
+  --text-xl:   1.5rem;    /* 24 h2 */
+  --text-2xl:  2rem;      /* 32 h1/display */
+  --text-3xl:  2.5rem;    /* 40 hero */
+  --leading-tight: 1.15;
+  --leading-snug:  1.35;
+  --leading-normal: 1.55;
+
+  /* ── spacing (4pt base, semantic names) ───────────────────── */
+  --space-2xs: 0.25rem;  /*  4 */
+  --space-xs:  0.5rem;   /*  8 */
+  --space-sm:  0.75rem;  /* 12 */
+  --space-md:  1rem;     /* 16 */
+  --space-lg:  1.5rem;   /* 24 */
+  --space-xl:  2rem;     /* 32 */
+  --space-2xl: 3rem;     /* 48 */
+  --space-3xl: 4.5rem;   /* 72 */
+
+  /* ── radius ────────────────────────────────────────────────── */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-full: 999px;
+
+  /* ── elevation ─────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.35);
+  --shadow-sm: 0 2px 6px -1px oklch(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px -6px oklch(0 0 0 / 0.5);
+  --shadow-lg: 0 24px 48px -12px oklch(0 0 0 / 0.6);
+
+  /* ── z-index scale (semantic, never arbitrary) ─────────────── */
+  --z-sticky:   40;
+  --z-dropdown: 60;
+  --z-modal:    80;
+  --z-toast:    100;
+
+  /* ── motion ────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:  cubic-bezier(0.5, 0, 0.75, 0);
+  --dur-fast: 140ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+}
+
+/* ── base ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
 html, body {
   background: var(--bg);
-  color: var(--text);
+  color: var(--on-surface);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: var(--leading-normal);
   color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+img, svg { display: block; }
+button, input, textarea, select { font: inherit; color: inherit; }
+
+/* ── focus (never removed without a visible replacement) ─────── */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-xs);
 }
 
-* { box-sizing: border-box; }
+/* ── scrollbars (subtle, on-brand) ────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; border: 2px solid var(--bg); }
+*::-webkit-scrollbar-track { background: transparent; }
 
-.chat-scroll::-webkit-scrollbar { width: 8px; }
-.chat-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+/* ══════════════════════════════════════════════════════════════ */
+@layer components {
+
+  /* ── buttons ─────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--space-xs);
+    min-height: 40px; padding: 0 var(--space-md);
+    border: 1px solid transparent; border-radius: var(--radius-md);
+    font-size: var(--text-sm); font-weight: 600; line-height: 1;
+    cursor: pointer; user-select: none; white-space: nowrap;
+    transition: background-color var(--dur-base) var(--ease-out),
+                border-color var(--dur-base) var(--ease-out),
+                color var(--dur-base) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-fast) var(--ease-out);
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { cursor: not-allowed; opacity: 0.5; pointer-events: none; }
+
+  .btn-primary { background: var(--brand); color: var(--on-brand); box-shadow: var(--shadow-xs); }
+  .btn-primary:hover:not(:disabled) { background: var(--brand-hover); }
+  .btn-lamp { background: var(--lamp); color: var(--on-lamp); box-shadow: var(--shadow-xs); }
+  .btn-lamp:hover:not(:disabled) { filter: brightness(1.05); }
+  .btn-ghost { background: transparent; color: var(--ink-2); border-color: var(--border); }
+  .btn-ghost:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+  .btn-danger { background: var(--danger); color: white; }
+
+  /* ── icon button ─────────────────────────────────────────── */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; min-width: 44px; /* ≥44px touch target */
+    border: 1px solid var(--border); border-radius: var(--radius-full);
+    background: var(--surface); color: var(--ink-2); cursor: pointer;
+    transition: background-color var(--dur-base) var(--ease-out),
+                border-color var(--dur-base) var(--ease-out),
+                color var(--dur-base) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out);
+    position: relative;
+  }
+  .icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); border-color: var(--border-strong); }
+  .icon-btn:active:not(:disabled) { transform: scale(0.96); }
+  .icon-btn:disabled { cursor: not-allowed; opacity: 0.5; }
+
+  /* ── card / surface ───────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+  }
+  .well { background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius-md); }
+
+  /* ── skeleton (loading, not spinners mid-content) ─────────── */
+  .skeleton {
+    border-radius: var(--radius-xs);
+    background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2));
+    background-size: 200% 100%;
+    animation: shimmer var(--dur-slow) linear infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* ── status dot ───────────────────────────────────────────── */
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--ink-3); }
+
+  /* ── badge ────────────────────────────────────────────────── */
+  .badge {
+    display: inline-flex; align-items: center; gap: var(--space-2xs);
+    padding: 2px 8px; border-radius: var(--radius-full);
+    font-size: 0.6875rem; font-weight: 600; line-height: 1.6;
+    border: 1px solid var(--border); color: var(--ink-2);
+    background: var(--surface-2);
+  }
+}
+
+/* ── chat scroll container ─────────────────────────────────── */
+.chat-scroll::-webkit-scrollbar { width: 10px; }
+.chat-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+
+/* ── voice waveform ────────────────────────────────────────── */
+.wave { display: inline-flex; align-items: center; gap: 3px; }
+.wave-bar { width: 3px; border-radius: 999px; transform-origin: center; transform: scaleY(1); }
+.wave[data-active="true"] .wave-bar { animation: wave-keyframes 900ms cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+@keyframes wave-keyframes {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wave[data-active="true"] .wave-bar { animation: none; transform: scaleY(0.7); }
+}
+
+/* ── message entrance ──────────────────────────────────────── */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.msg-in { animation: msg-in var(--dur-base) var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .msg-in { animation: none; } }
+
+/* ── markdown body ─────────────────────────────────────────── */
+.md-body { font-size: var(--text-base); line-height: var(--leading-normal); }
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body p { margin: 0.45em 0; }
+.md-body ul, .md-body ol { margin: 0.45em 0; padding-left: 1.25em; }
+.md-body ul { list-style: disc; }
+.md-body ol { list-style: decimal; }
+.md-body h1 { font-size: var(--text-lg); font-weight: 700; margin: 0.6em 0 0.25em; }
+.md-body h2 { font-size: var(--text-md); font-weight: 650; margin: 0.6em 0 0.25em; }
+.md-body strong { font-weight: 700; }
+.md-body a { color: var(--brand); text-decoration: underline; }
+.md-body code { font-family: var(--font-mono); font-size: 0.88em; background: var(--surface-3); padding: 0.1em 0.35em; border-radius: 4px; }
+.md-body pre { background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-sm) var(--space-md); overflow-x: auto; margin: 0.5em 0; }
+.md-body blockquote { border-left: 3px solid var(--border-strong); padding-left: var(--space-md); color: var(--ink-2); margin: 0.5em 0; }
+.md-body table { border-collapse: collapse; margin: 0.5em 0; font-size: var(--text-sm); width: 100%; }
+.md-body th, .md-body td { border: 1px solid var(--border); padding: 4px 10px; text-align: left; }
+.md-body th { background: var(--surface-2); font-weight: 600; }
+.md-body hr { border: none; border-top: 1px solid var(--border); margin: var(--space-md) 0; }

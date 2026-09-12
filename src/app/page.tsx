@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import InteractiveMessage from "@/components/chat/InteractiveMessage";
 import Markdown from "@/components/chat/Markdown";
+import Waveform from "@/components/ui/Waveform";
+import { EmptyState, StatusDot } from "@/components/ui/primitives";
 import type { InteractivePayload } from "@/lib/types";
 
 interface ChatMsg {
@@ -21,11 +23,11 @@ const USERID = "demo-user";
 function TranscriptBadge({ meta }: { meta?: { wordCount?: number; avgConfidence?: number } | null }) {
   if (!meta || meta.avgConfidence === undefined) return null;
   const pct = Math.round((meta.avgConfidence || 0) * 100);
-  const color = pct >= 90 ? "var(--accent-2)" : pct >= 60 ? "var(--warn)" : "var(--miss)";
+  const color = pct >= 90 ? "var(--success)" : pct >= 60 ? "var(--warning)" : "var(--danger)";
   return (
     <span
       className="ml-2 rounded px-1.5 py-0.5 text-[10px]"
-      style={{ background: "var(--panel)", color, border: "1px solid var(--border)" }}
+      style={{ background: "var(--surface-2)", color, border: "1px solid var(--border)" }}
       title="Speechmatics word-confidence on this voice message"
     >
       🎙 {pct}% clear
@@ -59,7 +61,7 @@ function SpeakButton({ text }: { text: string }) {
       onClick={speak}
       aria-label={speaking ? "Stop speaking" : "Hear this reply read aloud"}
       className="mt-2 rounded-full px-2.5 py-1 text-[11px]"
-      style={{ background: "var(--panel)", border: "1px solid var(--border)", color: speaking ? "var(--accent)" : "var(--muted)" }}
+      style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: speaking ? "var(--lamp)" : "var(--ink-3)" }}
     >
       {speaking ? "■ Stop" : "🔊 Listen"}
     </button>
@@ -422,134 +424,156 @@ export default function Home() {
 
   const busy = sendState === "receiving" || sendState === "running";
 
-  return (
-    <main className="mx-auto flex h-screen max-w-3xl flex-col px-4">
-      <header className="flex items-center justify-between py-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Tutorium</h1>
-          <p className="text-xs" style={{ color: "var(--muted)" }}>say less, learn more</p>
-          {topicTitle && (
-            <p className="mt-1 text-[11px]" style={{ color: "var(--accent)" }}>Studying: {topicTitle}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-3 text-xs" style={{ color: "var(--muted)" }}>
-          <a href="/library" className="underline-offset-2 hover:underline">Library</a>
-          {lastVocabCount !== null && (
-            <span title="Vocab Hot-Swap terms injected into Speechmatics">🎯 {lastVocabCount} terms boosted</span>
-          )}
-          {lastScore !== null && (
-            <span
-              style={{ color: lastScore >= 90 ? "var(--accent-2)" : lastScore >= 60 ? "var(--warn)" : "var(--miss)" }}
-              title="Last Say-It-Back pronunciation score"
-            >
-              SIB {lastScore}/100
-            </span>
-          )}
+return (
+    <div className="flex h-screen flex-col">
+      {/* top bar */}
+      <header className="sticky top-0 z-[var(--z-sticky)] border-b" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 88%, transparent)", backdropFilter: "blur(12px)" }}>
+        <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold" style={{ background: "var(--brand)", color: "var(--on-brand)" }}>
+                T
+              </span>
+              <span className="text-lg font-bold tracking-tight">Tutorium</span>
+            </div>
+            {topicTitle && (
+              <span className="hidden items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium sm:inline-flex" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--ink-2)" }}>
+                <StatusDot status="ok" />
+                {topicTitle}
+              </span>
+            )}
+          </div>
+          <nav className="flex items-center gap-2">
+            <a href="/library" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>
+              Library
+            </a>
+            <a className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)", display: "none" }} aria-hidden>
+              Settings
+            </a>
+          </nav>
         </div>
       </header>
 
-      <div ref={scrollRef} className="chat-scroll flex-1 space-y-4 overflow-y-auto pb-4" role="log" aria-live="polite">
-        {messages.length === 0 && (
-          <div className="mt-24 text-center">
-            <p className="text-2xl font-semibold">Speak your question. Get a lesson.</p>
-            <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
-              Hold the mic and ask anything — or paste messy notes and say &quot;make a study pack&quot;.
-            </p>
-          </div>
-        )}
-        {messages.map((m) => (
-          <div key={m.id} className={m.role === "user" ? "flex justify-end" : ""}>
-            <div
-              className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
-              style={{
-                background: m.role === "user" ? "var(--accent)" : "var(--panel)",
-                color: m.role === "user" ? "#0b0e14" : "var(--text)",
-                border: m.role === "assistant" ? "1px solid var(--border)" : "none",
-              }}
-            >
-              {m.role === "assistant" ? (
-                <Markdown>{m.content}</Markdown>
-              ) : (
-                <div className="whitespace-pre-wrap">{m.content}<TranscriptBadge meta={m.transcriptMeta} /></div>
-              )}
-              {m.role === "assistant" && <SpeakButton text={m.content} />}
-              {m.interactive && <div className="mt-3"><InteractiveMessage payload={m.interactive} onSayItBackRecord={onSayItBackRecord} /></div>}
-              {m.role === "user" && m.fromVoice && (
-                <div className="mt-1 text-right text-[10px]" style={{ color: "#0b0e14", opacity: 0.7 }}>voice input</div>
-              )}
+      {/* chat area */}
+      <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" role="log" aria-live="polite">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-6">
+          {messages.length === 0 ? (
+            <EmptyState
+              icon="📚"
+              title="Say it. Own it."
+              body="Speak a question or paste messy notes. Tutorium builds flashcards, quizzes, and a Say-It-Back drill you can hear yourself master."
+              actions={
+                <>
+                  <button className="btn btn-lamp" onClick={() => startRecording()}>
+                    <Waveform active={recording} /> Hold to speak
+                  </button>
+                  <a href="/library" className="btn btn-ghost">Open your library</a>
+                </>
+              }
+            />
+          ) : (
+            <div className="space-y-5">
+              {messages.map((m) => (
+                <div key={m.id} className={`msg-in flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className="max-w-[86%] rounded-2xl px-4 py-3"
+                    style={{
+                      background: m.role === "user" ? "var(--brand)" : "var(--surface)",
+                      color: m.role === "user" ? "var(--on-brand)" : "var(--on-surface)",
+                      border: m.role === "assistant" ? "1px solid var(--border)" : "none",
+                      boxShadow: "var(--shadow-xs)",
+                    }}
+                  >
+                    {m.role === "assistant" ? (
+                      <Markdown>{m.content}</Markdown>
+                    ) : (
+                      <div className="whitespace-pre-wrap">{m.content}</div>
+                    )}
+                    {m.role === "assistant" ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <SpeakButton text={m.content} />
+                      </div>
+                    ) : (
+                      <div className="mt-1 flex items-center justify-end gap-2">
+                        {m.fromVoice && <span className="text-[11px]" style={{ color: "color-mix(in oklab, var(--on-brand) 70%, transparent)" }}>voice · <TranscriptBadge meta={m.transcriptMeta} /></span>}
+                      </div>
+                    )}
+                    {m.interactive && <div className="mt-3"><InteractiveMessage payload={m.interactive} onSayItBackRecord={onSayItBackRecord} /></div>}
+                  </div>
+                </div>
+              ))}
             </div>
+          )}
+
+          {busy && (
+            <div className="mt-4 flex items-center gap-2 text-sm" style={{ color: "var(--ink-2)" }}>
+              <Waveform active /> Thinking&hellip;
+            </div>
+          )}
+          {sendState === "transcribing" && (
+            <div className="mt-4 flex items-center gap-2 text-sm" style={{ color: "var(--ink-2)" }}>
+              <Waveform active color="var(--brand)" /> Transcribing with Speechmatics&hellip;
+            </div>
+          )}
+          {error && (
+            <div className="mt-4 rounded-lg border px-4 py-2.5 text-sm" role="alert" style={{ background: "var(--danger-soft)", borderColor: "color-mix(in oklab, var(--danger) 50%, transparent)", color: "var(--danger)" }}>
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* composer */}
+      <div className="sticky bottom-0 z-[var(--z-sticky)] border-t pb-[env(safe-area-inset-bottom)]" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 92%, transparent)", backdropFilter: "blur(12px)" }}>
+        <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-4 py-3">
+          <div className="flex flex-1 items-end gap-2 rounded-2xl border bg-[var(--surface)] px-3 py-1.5" style={{ borderColor: "var(--border)" , transition: "border-color var(--dur-base) var(--ease-out)"}}>
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
+              rows={1}
+              placeholder={busy ? "One moment — I'll take your message when ready." : "Ask anything, or paste messy notes…"}
+              aria-label="Message to Tutorium"
+              className="max-h-32 flex-1 resize-none bg-transparent py-1.5 text-base outline-none placeholder:italic"
+              style={{ color: "var(--ink)" }}
+            />
+            {busy && (
+              <button onClick={cancel} aria-label="Cancel the current request" className="icon-btn" style={{ width: 36, height: 36, minWidth: 36, borderRadius: "var(--radius-md)", background: "var(--surface-2)", color: "var(--danger)" }}>
+                ✕
+              </button>
+            )}
           </div>
-        ))}
-        {busy && <div className="text-sm" style={{ color: "var(--muted)" }}>Thinking…</div>}
-        {sendState === "transcribing" && <div className="text-sm" style={{ color: "var(--muted)" }}>Transcribing with Speechmatics…</div>}
-        {error && <div className="rounded-lg px-3 py-2 text-sm" style={{ background: "#3a1620", color: "var(--miss)" }}>{error}</div>}
-      </div>
-
-      <div className="sticky bottom-0 flex items-end gap-2 bg-gradient-to-t from-[var(--bg)] to-transparent py-4">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send(input);
-            }
-          }}
-          rows={1}
-          placeholder={busy ? "One moment — your next message will send when ready…" : "Ask anything, or paste messy notes…"}
-          className="flex-1 resize-none rounded-xl px-4 py-3 text-sm outline-none"
-          aria-label="Message to Tutorium"
-          style={{ background: "var(--panel)", border: "1px solid var(--border)", fontStyle: busy ? "italic" : "normal" }}
-        />
-        {busy && (
           <button
-            onClick={cancel}
-            aria-label="Cancel the current request"
-            className="flex h-11 items-center rounded-xl px-3 text-sm"
-            style={{ background: "var(--miss)", color: "#0b0e14" }}
+            onMouseDown={startRecording}
+            onTouchStart={startRecording}
+            disabled={sendState === "receiving" || sendState === "transcribing"}
+            aria-label={recording ? "Recording — release to send" : "Hold to talk"}
+            className="icon-btn"
+            title="Hold to talk"
+            style={{
+              background: recording ? "var(--lamp)" : "var(--surface)",
+              color: recording ? "var(--on-lamp)" : "var(--lamp)",
+              borderColor: recording ? "var(--lamp)" : "var(--border)",
+              boxShadow: recording ? "0 0 0 4px var(--lamp-soft)" : "var(--shadow-xs)",
+            }}
           >
-            ✕
+            {recording ? <Waveform active /> : "🎙"}
           </button>
-        )}
-        <button
-          onMouseDown={startRecording}
-          onTouchStart={startRecording}
-          disabled={sendState === "receiving" || sendState === "transcribing"}
-          aria-label="Hold to talk"
-          className="flex h-11 w-11 items-center justify-center rounded-full text-lg transition"
-          style={{
-            background: recording ? "var(--miss)" : "var(--panel)",
-            border: "1px solid var(--border)",
-            opacity: sendState === "receiving" || sendState === "transcribing" ? 0.4 : 1,
-          }}
-        >
-          🎙
-        </button>
-        <button
-          onClick={() => send(input)}
-          disabled={busy || !input.trim()}
-          aria-label="Send message"
-          className="flex h-11 items-center rounded-xl px-4 text-sm font-medium"
-          style={{ background: "var(--accent)", color: "#0b0e14", opacity: busy || !input.trim() ? 0.4 : 1 }}
-        >
-          Send
-        </button>
-      </div>
-
-      {sibRecording && (
-        <div className="fixed inset-x-0 bottom-24 z-40 mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-xl px-4 py-3"
-          style={{ background: "var(--panel)", border: "1px solid var(--miss)" }}>
-          <div className="text-sm" style={{ color: "var(--miss)" }}>🎙 Recording read-aloud…</div>
-          <button
-            onClick={stopSibRecording}
-            aria-label="Stop recording"
-            className="rounded-lg px-3 py-1.5 text-sm font-medium"
-            style={{ background: "var(--miss)", color: "#0b0e14" }}
-          >
-            Stop
+          <button onClick={() => send(input)} disabled={busy || !input.trim()} aria-label="Send message" className="btn btn-primary">
+            Send
           </button>
         </div>
+      </div>
+
+      {/* Say-It-Back floating recorder */}
+      {sibRecording && (
+        <div className="fixed inset-x-0 bottom-24 z-[var(--z-dropdown)] mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-xl border px-4 py-3 shadow-lg" style={{ background: "var(--surface)", borderColor: "var(--lamp)", boxShadow: "var(--shadow-lg)" }}>
+          <div className="flex items-center gap-2 text-sm" style={{ color: "var(--lamp)" }}>
+            <Waveform active /> Recording read-aloud&hellip;
+          </div>
+          <button onClick={stopSibRecording} aria-label="Stop recording" className="btn btn-lamp">Stop</button>
+        </div>
       )}
-    </main>
+    </div>
   );
 }

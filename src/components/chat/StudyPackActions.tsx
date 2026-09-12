@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export default function StudyPackActions({
   topic,
@@ -12,36 +13,38 @@ export default function StudyPackActions({
   actions: Array<{ label: string; materialType: string }>;
 }) {
   const router = useRouter();
-  const go = async (materialType: string) => {
-    if (materialType === "say_it_back") {
-      // say_it_back flows through the normal agent endpoint
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: "demo-user", message: "I want to practice saying it back", topicId }),
-      });
-      const data = await res.json();
-      router.refresh();
-      if (data.topicId) window.location.href = "/";
-    } else {
-      const msg = materialType === "quiz" ? "quiz me" : materialType === "flashcards" ? "show flashcards" : "make a visual";
-      void fetch("/api/agent", {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const go = async (materialType: string, label: string) => {
+    setBusy(materialType);
+    try {
+      const msg =
+        materialType === "quiz" ? "quiz me"
+          : materialType === "flashcards" ? "show my flashcards"
+          : materialType === "html_visual" ? "make a visual"
+          : materialType === "say_it_back" ? "I want to practice saying it back"
+          : label.toLowerCase();
+      await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: "demo-user", message: msg, topicId }),
-      }).then(() => window.location.reload());
+      });
+      router.push(`/?topic=${encodeURIComponent(topicId)}`);
+    } finally {
+      setBusy(null);
     }
   };
+
   return (
-    <div className="mt-1 flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2">
       {actions.map((a) => (
         <button
           key={a.materialType}
-          onClick={() => go(a.materialType)}
-          className="rounded-full px-3 py-1 text-xs"
-          style={{ background: "var(--panel)", border: "1px solid var(--accent)", color: "var(--accent)" }}
+          onClick={() => go(a.materialType, a.label)}
+          disabled={busy !== null}
+          className="btn btn-ghost"
         >
-          {a.label}
+          {busy === a.materialType ? "…" : a.label}
         </button>
       ))}
     </div>

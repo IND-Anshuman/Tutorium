@@ -21,9 +21,7 @@ export default function HtmlVisual({ title, html }: { title: string; html: strin
 
   return (
     <div className="rounded-xl" style={{ border: "1px solid var(--border)", overflow: "hidden", background: "#fff" }}>
-      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide" style={{ background: "var(--panel)", color: "var(--muted)" }}>
-        {title}
-      </div>
+      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide" style={{ background: "var(--surface-2)", color: "var(--ink-3)" }}>{title}</div>
       <iframe
         ref={frameRef}
         title={title}

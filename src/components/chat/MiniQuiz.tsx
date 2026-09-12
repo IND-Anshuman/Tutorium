@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { QuizItem } from "@/lib/types";
 
-function questionPraise(score: number, total: number): string {
+function praise(score: number, total: number): string {
   const pct = total ? score / total : 0;
   if (pct >= 0.9) return "Excellent — you've got this.";
   if (pct >= 0.7) return "Great work — a couple to review.";
@@ -29,7 +29,6 @@ export default function MiniQuiz({ questions, topicId }: { questions: QuizItem[]
   const finish = () => {
     setDone(true);
     if (topicId) {
-      // persist score to learner profile + quiz history (fire-and-forget)
       fetch("/api/quiz-score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,58 +47,64 @@ export default function MiniQuiz({ questions, topicId }: { questions: QuizItem[]
   };
 
   if (done) {
+    const pct = score / questions.length;
     return (
-      <div className="rounded-xl p-4 text-center" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-        <div className="text-lg font-semibold">{score} / {questions.length}</div>
-        <div className="mt-1 text-[11px]" style={{ color: "var(--muted)" }}>
-          {questionPraise(score, questions.length)} Saved to your learner profile.
+      <div className="card p-6 text-center">
+        <div className="text-4xl font-bold tracking-tight" style={{ color: pct >= 0.7 ? "var(--brand)" : pct >= 0.5 ? "var(--warning)" : "var(--danger)" }}>
+          {score}
+          <span className="text-lg font-medium" style={{ color: "var(--ink-3)" }}>/{questions.length}</span>
         </div>
-        <button
-          className="mt-2 rounded-lg px-3 py-1 text-xs"
-          style={{ background: "var(--panel)", border: "1px solid var(--border)" }}
-          onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); }}
-        >
-          Redo
+        <p className="mt-1 text-sm" style={{ color: "var(--ink-2)" }}>{praise(score, questions.length)}</p>
+        <div className="mt-1 text-xs" style={{ color: "var(--ink-3)" }}>
+          {topicId ? "Score saved to your learner profile." : ""}
+        </div>
+        <button className="btn btn-ghost mt-4" onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); }}>
+          Try again
         </button>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl p-4" style={{ background: "var(--bg)", border: "1px solid var(--border)" }}>
-      <div className="text-[10px] uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-        Question {idx + 1} of {questions.length}
+    <div className="card p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-xs font-medium" style={{ color: "var(--ink-2)" }}>Quiz</span>
+        <span className="text-xs tabular-nums" style={{ color: "var(--ink-3)" }}>
+          {idx + 1} / {questions.length}
+        </span>
       </div>
-      <div className="mt-1 text-sm font-medium">{q.question}</div>
-      <div className="mt-3 space-y-2">
+      <h3 className="text-base font-semibold leading-snug">{q.question}</h3>
+      <div className="mt-4 flex flex-col gap-2">
         {q.choices.map((c, ci) => {
           const isPicked = picked === String(ci);
           const isCorrect = String(ci) === String(q.answer);
           const reveal = picked !== null;
+          let border = "var(--border)";
+          let bg = "var(--surface-2)";
+          let color = "var(--ink)";
+          if (reveal && isCorrect) { border = "var(--success)"; bg = "oklch(0.30 0.10 155 / 0.4)"; color = "var(--ink)"; }
+          else if (reveal && isPicked && !isCorrect) { border = "var(--danger)"; bg = "var(--danger-soft)"; color = "var(--ink)"; }
+          else if (isPicked) { border = "var(--brand)"; bg = "oklch(0.30 0.10 148 / 0.35)"; }
           return (
             <button
               key={ci}
               onClick={() => pick(ci)}
-              className="block w-full rounded-lg px-3 py-2 text-left text-sm transition"
-              style={{
-                background: reveal && isCorrect ? "rgba(126,224,163,.15)" : isPicked ? "rgba(242,112,138,.15)" : "var(--panel)",
-                border: `1px solid ${reveal && isCorrect ? "var(--accent-2)" : isPicked ? "var(--miss)" : "var(--border)"}`,
-              }}
+              disabled={reveal}
+              className="rounded-lg px-4 py-3 text-left transition-colors"
+              style={{ background: bg, border: `1px solid ${border}`, color }}
             >
               {c}
+              {reveal && isCorrect && <span className="float-right text-sm" style={{ color: "var(--success)" }}>✓</span>}
+              {reveal && isPicked && !isCorrect && <span className="float-right text-sm" style={{ color: "var(--danger)" }}>✕</span>}
             </button>
           );
         })}
       </div>
       {picked !== null && (
-        <div className="mt-3">
-          {q.explanation && <p className="text-xs" style={{ color: "var(--muted)" }}>{q.explanation}</p>}
-          <button
-            className="mt-2 rounded-lg px-3 py-1 text-xs"
-            style={{ background: "var(--accent)", color: "#0b0e14" }}
-            onClick={next}
-          >
-            {idx + 1 < questions.length ? "Next →" : "Finish"}
+        <div className="mt-4">
+          {q.explanation && <p className="text-sm" style={{ color: "var(--ink-2)" }}>{q.explanation}</p>}
+          <button className="btn btn-primary mt-3 w-full" onClick={next}>
+            {idx + 1 < questions.length ? "Next question" : "Finish quiz"}
           </button>
         </div>
       )}
