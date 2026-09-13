@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
     const fastIntent = topic ? resolveIntentFromText(message) : null;
     let classification = fastIntent
       ? { subject: subject.name, subcategory: "General", topic: topic.title, intent: fastIntent, confidence: 1 }
-      : await classifyMessage(message, topic ? [] : history, abort.signal);
+      : await classifyMessage(message, topic ? [] : history, abort.signal, sessionId ? getSessionContext(sessionId) : null);
 
     if (subject && topic) {
       classification = { ...classification, subject: subject.name, topic: topic.title };
@@ -189,6 +189,7 @@ export async function POST(req: NextRequest) {
       saveMaterial,
       message,
       signal: abort.signal,
+      sessionCtx: sessionId ? getSessionContext(sessionId) : null,
     };
 
     const result = await orchestrateTurn(ctx);

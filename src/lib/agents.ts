@@ -10,16 +10,36 @@
 
 import { llmJson } from "./llm";
 import type { Classification, StudyPack, Flashcard, QuizItem, MemoryUpdate, ChatMessage, Intent } from "./types";
+import type { SessionContext } from "./db";
 
 // Thin wrapper so every agent call shares the same AbortSignal plumbing.
 function llmJsonSig<T>(signal: AbortSignal | undefined, args: Parameters<typeof llmJson<T>>[0]) {
   return llmJson<T>({ ...args, signal });
 }
 
+// Compact prefix injected into every agent's system prompt. Prevents the model
+// from re-deriving what's already established in the session (level, key terms,
+// weak areas), and gives a small but visible signal of continuity.
+export function domainContextPrefix(ctx: SessionContext | null | undefined): string {
+  if (!ctx) return "";
+  const lines: string[] = [];
+  if (ctx.summary) lines.push(`Current domain focus: ${ctx.summary}`);
+  if (ctx.level && ctx.level !== "unknown") lines.push(`Learner level: ${ctx.level}`);
+  if (ctx.key_terms?.length) lines.push(`Known terms in this domain: ${ctx.key_terms.slice(-12).join(", ")}`);
+  if (ctx.weak_areas?.length) lines.push(`Learner struggles: ${ctx.weak_areas.slice(-6).join("; ")}`);
+  if (ctx.short_notes?.length) lines.push(`Recent notes: ${ctx.short_notes.slice(-5).join(" | ")}`);
+  return lines.length ? lines.join("\n") + "\n\n" : "";
+}
+
 // ---------- classifier ----------
-export async function classifyMessage(message: string, history: ChatMessage[], signal?: AbortSignal): Promise<Classification> {
+export async function classifyMessage(
+  message: string,
+  history: ChatMessage[],
+  signal?: AbortSignal,
+  sessionCtx?: SessionContext | null
+): Promise<Classification> {
   const { data } = await llmJsonSig<Classification>(signal, {
-    system: `Classify the student message. Return JSON {"subject","subcategory","topic","intent","confidence"}.
+    system: domainContextPrefix(sessionCtx) + `Classify the student message. Return JSON {"subject","subcategory","topic","intent","confidence"}.
 intent ∈ {create_study_pack, teach_topic, make_flashcards, make_quiz, make_summary, make_story, make_visual, retrieve_material, say_it_back, unknown}.
 Notes/messy dump -> create_study_pack. Material request -> make_*. "show me what I have" -> retrieve_material. Subject="General" if unclear. Topic: 2-5 words.`,
     user: `${history
@@ -43,10 +63,11 @@ export async function generateSceneBrief(args: {
   topic: string;
   subject: string;
   sourceText: string;
+  sessionCtx?: SessionContext | null;
   signal?: AbortSignal;
 }): Promise<{ brief: string; keyTerms: string[] }> {
   const { data } = await llmJsonSig<{ brief: string; key_terms: string[] }>(args.signal, {
-    system: `Summarize the source into a tight study-passage for a tutor.
+    system: domainContextPrefix(args.sessionCtx) + `Summarize the source into a tight study-passage for a tutor.
 Return JSON: {"brief": <=120 words covering only the core concepts a tutor needs, "key_terms": [4-8 domain terms]}. No markdown.`,
     user: `Topic: ${args.topic} (${args.subject})\nSource:\n"""${args.sourceText.slice(0, 4000)}"""`,
     maxTokens: 320,
@@ -59,9 +80,9 @@ Return JSON: {"brief": <=120 words covering only the core concepts a tutor needs
 // Each sub-call is small and isolated; orchestrate saves them incrementally so a
 // partial pack survives. All consume the compact brief, not raw notes.
 
-async function packCore(args: { topic: string; subject: string; brief: string; signal?: AbortSignal }): Promise<{ clean_notes: string; reviewer: string; summary: string }> {
+async function packCore(args: { topic: string; subject: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<{ clean_notes: string; reviewer: string; summary: string }> {
   const { data } = await llmJsonSig<{ clean_notes: string; reviewer: string; summary: string }>(args.signal, {
-    system: `Write a study pack core for the topic. Return JSON {"clean_notes": markdown, "reviewer": concise bullet recap, "summary": 3-4 sentences}.
+    system: domainContextPrefix(args.sessionCtx) + `Write a study pack core for the topic. Return JSON {"clean_notes": markdown, "reviewer": concise bullet recap, "summary": 3-4 sentences}.
 Accurate, grade-appropriate, no filler.`,
     user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""`,
     maxTokens: 1100,
@@ -69,9 +90,9 @@ Accurate, grade-appropriate, no filler.`,
   return { clean_notes: data.clean_notes || "", reviewer: data.reviewer || "", summary: data.summary || "" };
 }
 
-async function packAssess(args: { topic: string; brief: string; signal?: AbortSignal }): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
+async function packAssess(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
   const { data } = await llmJsonSig<{ flashcards: Flashcard[]; quiz: QuizItem[] }>(args.signal, {
-    system: `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (6), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation"}] (4)}.
+    system: domainContextPrefix(args.sessionCtx) + `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (6), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation"}] (4)}.
 answer MUST be the index string of the correct choice.`,
     user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
     maxTokens: 900,
@@ -87,9 +108,9 @@ answer MUST be the index string of the correct choice.`,
   };
 }
 
-async function packStory(args: { topic: string; brief: string; signal?: AbortSignal }): Promise<string> {
+async function packStory(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<string> {
   const { data } = await llmJsonSig<{ story: string }>(args.signal, {
-    system: `Write a short memorable story/analogy teaching the topic's core idea. Return JSON {"story": 6-10 sentences}. Plain text, no markdown.`,
+    system: domainContextPrefix(args.sessionCtx) + `Write a short memorable story/analogy teaching the topic's core idea. Return JSON {"story": 6-10 sentences}. Plain text, no markdown.`,
     user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
     maxTokens: 400,
   });
@@ -100,21 +121,22 @@ export async function createStudyPack(args: {
   topic: string;
   subject: string;
   brief: string;
+  sessionCtx?: SessionContext | null;
   signal?: AbortSignal;
 }): Promise<StudyPack> {
   // Resilient: each section is best-effort, so a single flaky call can't wipe the pack.
   // (Promise.allSettled would still require touching every branch; explicit catches
   //  keep the successful sections going when one fails.)
   const [core, assess, story] = await Promise.all([
-    packCore({ topic: args.topic, subject: args.subject, brief: args.brief, signal: args.signal }).catch((e) => {
+    packCore({ topic: args.topic, subject: args.subject, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
       console.warn("packCore failed:", (e as Error).message);
       return { clean_notes: "", reviewer: "", summary: "" };
     }),
-    packAssess({ topic: args.topic, brief: args.brief, signal: args.signal }).catch((e) => {
+    packAssess({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
       console.warn("packAssess failed:", (e as Error).message);
       return { flashcards: [], quiz: [] };
     }),
-    packStory({ topic: args.topic, brief: args.brief, signal: args.signal }).catch((e) => {
+    packStory({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
       console.warn("packStory failed:", (e as Error).message);
       return "";
     }),
@@ -130,13 +152,13 @@ export async function createStudyPack(args: {
 }
 
 // For on-demand requests (just flashcards / just quiz) when no pack exists yet.
-export async function createFlashcardsOnly(args: { topic: string; brief: string; signal?: AbortSignal }): Promise<Flashcard[]> {
-  const { flashcards } = await packAssess({ topic: args.topic, brief: args.brief, signal: args.signal });
+export async function createFlashcardsOnly(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<Flashcard[]> {
+  const { flashcards } = await packAssess({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal });
   return flashcards;
 }
 
-export async function createQuizOnly(args: { topic: string; brief: string; signal?: AbortSignal }): Promise<QuizItem[]> {
-  const { quiz } = await packAssess({ topic: args.topic, brief: args.brief, signal: args.signal });
+export async function createQuizOnly(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<QuizItem[]> {
+  const { quiz } = await packAssess({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal });
   return quiz;
 }
 
@@ -148,10 +170,11 @@ export async function teachTopic(args: {
   history: ChatMessage[];
   profile?: { learning_style: string; weaknesses: string[]; strengths: string[] } | null;
   brief?: string;
+  sessionCtx?: SessionContext | null;
   signal?: AbortSignal;
 }): Promise<{ reply: string; keyTerms: string[] }> {
   const { data } = await llmJsonSig<{ reply: string; key_terms: string[] }>(args.signal, {
-    system: `You are Tutorium, a warm voice-first tutor. The student is listening, not reading: core idea first, short spoken paragraphs, one analogy, invite a follow-up. Address weaknesses if given.
+    system: domainContextPrefix(args.sessionCtx) + `You are Tutorium, a warm voice-first tutor. The student is listening, not reading: core idea first, short spoken paragraphs, one analogy, invite a follow-up. Address weaknesses if given.
 Return JSON {"reply": markdown ~150-220 words, "key_terms": [4-8 terms you used]}.`,
     user: `Topic: ${args.topic} (${args.subject})
 Learning style: ${args.profile?.learning_style || "unknown"}; weaknesses: ${(args.profile?.weaknesses || []).join(", ") || "none"}; strengths: ${(args.profile?.strengths || []).join(", ") || "none"}
@@ -214,10 +237,11 @@ export async function generateVisual(args: {
   topic: string;
   subject: string;
   brief: string;
+  sessionCtx?: SessionContext | null;
   signal?: AbortSignal;
 }): Promise<{ html: string; title: string }> {
   const { data } = await llmJsonSig<{ title: string; html: string }>(args.signal, {
-    system: `Design a self-contained HTML visual for a lesson. Only: h1/h2, p, ul/li, table, one <style>, optional inline <svg>. NO scripts, NO <html>/<body>, NO iframes. <60 lines.
+    system: domainContextPrefix(args.sessionCtx) + `Design a self-contained HTML visual for a lesson. Only: h1/h2, p, ul/li, table, one <style>, optional inline <svg>. NO scripts, NO <html>/<body>, NO iframes. <60 lines.
 Return JSON {"title","html"}.`,
     user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""`,
     maxTokens: 1200,
@@ -232,10 +256,11 @@ export async function gradeTeachBack(args: {
   topic: string;
   transcript: string;
   brief: string;
+  sessionCtx?: SessionContext | null;
   signal?: AbortSignal;
 }): Promise<{ verdict: string; missed: string[]; next_step: string }> {
   const { data } = await llmJsonSig<{ verdict: string; missed: string[]; next_step: string }>(args.signal, {
-    system: `A student explained the topic (Feynman). Grade against the brief. Return JSON {"verdict": 1-2 sentences, "missed": [2-4 short points], "next_step": one action}.`,
+    system: domainContextPrefix(args.sessionCtx) + `A student explained the topic (Feynman). Grade against the brief. Return JSON {"verdict": 1-2 sentences, "missed": [2-4 short points], "next_step": one action}.`,
     user: `Topic: ${args.topic}\nGround truth:\n"""${args.brief}"""\n\nStudent:
 """${args.transcript.slice(0, 2500)}"""`,
     maxTokens: 500,
