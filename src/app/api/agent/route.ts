@@ -24,6 +24,7 @@ import { classifyMessage, updateMemory, applyMemoryUpdate, isMemoryWorthy, resol
 import { llmRuntimeLabel } from "@/lib/llm";
 import { orchestrateTurn, type OrcCtx } from "@/lib/orchestrate";
 import { startJobRunner } from "@/lib/jobrunner";
+import { scheduleCompaction } from "@/lib/context-compactor";
 import type { ChatMessage } from "@/lib/types";
 import db from "@/lib/db";
 
@@ -194,6 +195,15 @@ export async function POST(req: NextRequest) {
 
     const result = await orchestrateTurn(ctx);
     const reply = result.reply;
+
+    // Schedule a debounced compaction of the session's domain context. Picks up
+    // the most recent messages from the DB so we don't have to pass them in.
+    if (sessionId) {
+      const recent = db
+        .prepare(`SELECT role, content FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 6`)
+        .all(sessionId) as Array<{ role: string; content: string }>;
+      scheduleCompaction(sessionId, recent.reverse());
+    }
 
     // #1 token opt: only fire the memory LLM call when the exchange carries a
     // durable signal (correction, stated goal, self-assessment, inferred struggle).
