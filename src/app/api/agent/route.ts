@@ -12,12 +12,20 @@ import {
   getMaterial,
   createJob,
   asInteractive,
+  getSession,
+  getLastOpenSession,
+  createSession,
+  renameSession,
+  bumpSessionTopicCount,
+  touchSession,
+  getSessionContext,
 } from "@/lib/db";
 import { classifyMessage, updateMemory, applyMemoryUpdate, isMemoryWorthy, resolveIntentFromText, isTeachQuestion } from "@/lib/agents";
 import { llmRuntimeLabel } from "@/lib/llm";
 import { orchestrateTurn, type OrcCtx } from "@/lib/orchestrate";
 import { startJobRunner } from "@/lib/jobrunner";
 import type { ChatMessage } from "@/lib/types";
+import db from "@/lib/db";
 
 // Start the background job worker when the server boots (guarded singleton).
 startJobRunner();
@@ -30,6 +38,7 @@ interface AgentRequestBody {
   userId: string;
   message: string;
   topicId?: string | null;
+  sessionId?: string | null;
   transcriptMeta?: { fromVoice?: boolean; wordCount?: number; avgConfidence?: number } | null;
   // background job control: "start" queues a study-pack job and returns immediately
   mode?: "sync" | "job" | "job_status";
@@ -56,6 +65,32 @@ export async function POST(req: NextRequest) {
     if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
     if (message.length > MAX_MESSAGE_CHARS) {
       return NextResponse.json({ error: `message too long (max ${MAX_MESSAGE_CHARS} chars)` }, { status: 400 });
+    }
+
+    // ---- resolve / create the active session ----
+    let sessionId: string | null = null;
+    {
+      let s: any = null;
+      if (body.sessionId) s = getSession(body.sessionId);
+      if (!s && body.topicId) {
+        const t = getTopic(body.topicId);
+        if (t) {
+          // legacy: link to the session that owns this topic's most-recent activity
+          const recent = db
+            .prepare(
+              `SELECT session_id FROM messages WHERE topic_id = ? AND session_id IS NOT NULL
+               ORDER BY created_at DESC LIMIT 1`
+            )
+            .get(body.topicId) as { session_id: string } | undefined;
+          if (recent?.session_id) s = getSession(recent.session_id);
+        }
+      }
+      if (!s) s = getLastOpenSession(userId);
+      if (!s) {
+        sessionId = createSession(userId, ""); // domain auto-named after classify
+      } else {
+        sessionId = s.id;
+      }
     }
 
     // ---- normal sync turn (auto-queues heavy create_study_pack below) ----
@@ -99,7 +134,22 @@ export async function POST(req: NextRequest) {
       classification = { ...classification, intent: "teach_topic" };
     }
 
-    saveMessage(topic.id, "user", message, null, body.transcriptMeta || null);
+    saveMessage(topic.id, "user", message, null, body.transcriptMeta || null, { sessionId });
+
+    // Gentle auto-rename: only if the session still has its placeholder name and
+    // the user hasn't locked it. User edits always lock, so we never overwrite
+    // their choice.
+    if (sessionId) {
+      const cur = getSession(sessionId);
+      if (cur && !cur.domain_locked && (cur.domain === "" || cur.domain === "New session")) {
+        renameSession(sessionId, `${subject.name} · ${topic.title}`);
+      }
+      // Bump topic_count the first time we create a real topic for this session.
+      if (topic && (!cur || (cur.topic_count || 0) === 0)) {
+        bumpSessionTopicCount(sessionId);
+      }
+      touchSession(sessionId);
+    }
 
     // Heavy generations (study pack, visual) never block the response: hand them
     // to the background runner and return a 202 with a jobId the client polls.
@@ -110,6 +160,7 @@ export async function POST(req: NextRequest) {
         topicTitle: topic.title,
         subjectName: subject.name,
         classification,
+        sessionId,
       });
       return NextResponse.json({
         queued: true,
@@ -119,6 +170,7 @@ export async function POST(req: NextRequest) {
         subjectId: subject.id,
         subjectName: subject.name,
         intent: classification.intent,
+        sessionId,
         pretty: classification.intent === "make_visual"
           ? "Drawing the visual guide — it'll be ready in a moment."
           : "I'm building your study pack — it'll be ready in a moment.",
@@ -148,7 +200,7 @@ export async function POST(req: NextRequest) {
       updateMemoryAsync(userId, profile, message, reply);
     }
 
-    saveMessage(topic.id, "assistant", reply, asInteractive(result.interactive));
+    saveMessage(topic.id, "assistant", reply, asInteractive(result.interactive), null, { sessionId });
 
     return NextResponse.json({
       reply,
@@ -158,6 +210,7 @@ export async function POST(req: NextRequest) {
       subjectId: subject.id,
       subjectName: subject.name,
       intent: result.intent,
+      sessionId,
       runtime: llmRuntimeLabel(),
     });
   } catch (err) {
