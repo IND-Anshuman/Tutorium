@@ -5,6 +5,7 @@ import InteractiveMessage from "@/components/chat/InteractiveMessage";
 import Markdown from "@/components/chat/Markdown";
 import Waveform from "@/components/ui/Waveform";
 import { EmptyState, StatusDot } from "@/components/ui/primitives";
+import SessionsRail from "@/components/sessions/SessionsRail";
 import type { InteractivePayload } from "@/lib/types";
 
 interface ChatMsg {
@@ -105,6 +106,13 @@ export default function Home() {
   const [topicTitle, setTopicTitle] = useState<string>("");
   const [lastScore, setLastScore] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [domain, setDomain] = useState<string>("");
+  const [domainLocked, setDomainLocked] = useState<boolean>(false);
+  const [railOpen, setRailOpen] = useState<boolean>(false);
+  const [contextSummary, setContextSummary] = useState<string>("");
+  const [domainDraft, setDomainDraft] = useState<string>("");
+  const [editingDomain, setEditingDomain] = useState<boolean>(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -204,7 +212,7 @@ export default function Home() {
         const res = await fetch("/api/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: USERID, message, topicId, transcriptMeta: meta || null }),
+          body: JSON.stringify({ userId: USERID, message, topicId, sessionId, transcriptMeta: meta || null }),
           signal: abort.signal,
         });
         const data = await res.json();
@@ -215,6 +223,7 @@ export default function Home() {
 
         if (data.queued && data.jobId) {
           setSendState("running");
+          setSessionId((prev) => data.sessionId || prev);
           setMessages((m) => [
             ...m,
             { id: uid(), role: "assistant", content: data.pretty || "I'm building your study pack…" },
@@ -251,6 +260,8 @@ export default function Home() {
             ]);
           });
         } else {
+          setSessionId((prev) => data.sessionId || prev);
+          if (data.sessionCtxPreview) setContextSummary(data.sessionCtxPreview);
           setMessages((m) => [
             ...m,
             { id: uid(), role: "assistant", content: data.reply, interactive: data.interactive },
@@ -390,24 +401,49 @@ export default function Home() {
     let cancelled = false;
     (async () => {
       try {
-        // prefer an explicit ?topic= from the topic page "Continue studying" link
-        const want = new URLSearchParams(window.location.search).get("topic");
-        const qs = want ? `userId=${USERID}&topicId=${want}` : `userId=${USERID}`;
+        // Priority: ?session= (deep link) > ?topic= (legacy) > last open session
+        const params = new URLSearchParams(window.location.search);
+        const wantSession = params.get("session");
+        const wantTopic = params.get("topic");
+        const qs =
+          wantSession ? `userId=${USERID}&sessionId=${wantSession}` :
+          wantTopic   ? `userId=${USERID}&topicId=${wantTopic}` :
+                        `userId=${USERID}`;
         const res = await fetch(`/api/session?${qs}`);
         const data = await res.json();
-        if (cancelled || !data.session) return;
-        setTopicId(data.session.topicId);
-        setTopicTitle(data.session.topicTitle);
-        if (Array.isArray(data.messages) && data.messages.length) {
-          const hydrated: ChatMsg[] = data.messages.map((m: any) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            interactive: m.interactive || null,
-            fromVoice: !!m.audio_meta,
-            transcriptMeta: m.audio_meta || null,
-          }));
-          setMessages(hydrated);
+        if (cancelled) return;
+        if (data.session) {
+          setSessionId(data.session.id);
+          setDomain(data.session.domain || "");
+          setDomainLocked(!!data.session.domain_locked);
+          setDomainDraft(data.session.domain || "");
+          setTopicId(null);
+          setTopicTitle("");
+          if (Array.isArray(data.messages) && data.messages.length) {
+            const hydrated: ChatMsg[] = data.messages.map((m: any) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              interactive: m.interactive || null,
+              fromVoice: !!m.audio_meta,
+              transcriptMeta: m.audio_meta || null,
+            }));
+            setMessages(hydrated);
+          }
+        } else if (data.topic) {
+          setTopicId(data.topic.id);
+          setTopicTitle(data.topic.title);
+          if (Array.isArray(data.messages) && data.messages.length) {
+            const hydrated: ChatMsg[] = data.messages.map((m: any) => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              interactive: m.interactive || null,
+              fromVoice: !!m.audio_meta,
+              transcriptMeta: m.audio_meta || null,
+            }));
+            setMessages(hydrated);
+          }
         }
       } catch {
         /* offline/session-less start is fine */
@@ -490,9 +526,17 @@ return (
                       <div className="whitespace-pre-wrap">{m.content}</div>
                     )}
                     {m.role === "assistant" ? (
-                      <div className="mt-2 flex items-center gap-2">
-                        <SpeakButton text={m.content} />
-                      </div>
+                      <>
+                        <div className="mt-2 flex items-center gap-2">
+                          <SpeakButton text={m.content} />
+                        </div>
+                        {contextSummary && (
+                          <div className="context-strip" aria-label="Session domain context">
+                            <span className="context-strip-label">Domain context</span>
+                            <span className="context-strip-pill">{contextSummary}</span>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="mt-1 flex items-center justify-end gap-2">
                         {m.fromVoice && <span className="text-[11px]" style={{ color: "color-mix(in oklab, var(--on-brand) 70%, transparent)" }}>voice · <TranscriptBadge meta={m.transcriptMeta} /></span>}

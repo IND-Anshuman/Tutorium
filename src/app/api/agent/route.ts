@@ -213,6 +213,14 @@ export async function POST(req: NextRequest) {
 
     saveMessage(topic.id, "assistant", reply, asInteractive(result.interactive), null, { sessionId });
 
+    // Compact session context preview for the client (≤180 chars) so the
+    // context-strip widget can render what the tutor knows about this domain.
+    let sessionCtxPreview: string | null = null;
+    if (sessionId) {
+      const ctx = getSessionContext(sessionId);
+      if (ctx.summary) sessionCtxPreview = ctx.summary.slice(0, 180);
+    }
+
     return NextResponse.json({
       reply,
       interactive: result.interactive,
@@ -222,6 +230,7 @@ export async function POST(req: NextRequest) {
       subjectName: subject.name,
       intent: result.intent,
       sessionId,
+      sessionCtxPreview,
       runtime: llmRuntimeLabel(),
     });
   } catch (err) {
