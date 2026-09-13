@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { mergeIntoContext, defaultContext, type SessionContext } from "./context-compactor";
+import { mergeIntoContext, type SessionContext } from "./context-compactor";
+import { defaultContext } from "./db";
 
 describe("context-compactor merge", () => {
   it("merges terms + dedupes + caps at 12", () => {
