@@ -90,6 +90,29 @@ CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_quiz_topic ON quiz_scores(topic_id);
 `);
 
+// Idempotent migration: add messages.session_id if missing.
+const msgCols = db.prepare(`PRAGMA table_info(messages)`).all() as { name: string }[];
+if (!msgCols.some((c) => c.name === "session_id")) {
+  db.exec(`ALTER TABLE messages ADD COLUMN session_id TEXT;`);
+}
+db.exec(`
+CREATE TABLE IF NOT EXISTS sessions (
+  id              TEXT PRIMARY KEY,
+  user_id         TEXT NOT NULL,
+  domain          TEXT NOT NULL,
+  domain_locked   INTEGER NOT NULL DEFAULT 0,
+  status          TEXT NOT NULL DEFAULT 'open',
+  context         TEXT NOT NULL DEFAULT '{}',
+  topic_count     INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  closed_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON sessions(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_updated ON sessions(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+`);
+
 export const uid = () => crypto.randomUUID();
 export const nowIso = () => new Date().toISOString();
 
@@ -313,17 +336,32 @@ export function listMaterials(topicId: string) {
 }
 
 // ---------- messages ----------
+export interface SaveMessageOpts {
+  sessionId?: string | null;
+  id?: string;
+}
 export function saveMessage(
   topicId: string | null,
   role: "user" | "assistant",
   content: string,
   interactive?: InteractiveLike | null,
-  audioMeta?: Record<string, unknown> | null
+  audioMeta?: Record<string, unknown> | null,
+  opts: SaveMessageOpts = {}
 ) {
-  const id = uid();
+  const id = opts.id || uid();
   db.prepare(
-    `INSERT INTO messages (id, topic_id, role, content, interactive, audio_meta, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, topicId, role, content, interactive ? JSON.stringify(interactive) : null, audioMeta ? JSON.stringify(audioMeta) : null, nowIso());
+    `INSERT INTO messages (id, topic_id, session_id, role, content, interactive, audio_meta, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    topicId,
+    opts.sessionId ?? null,
+    role,
+    content,
+    interactive ? JSON.stringify(interactive) : null,
+    audioMeta ? JSON.stringify(audioMeta) : null,
+    nowIso()
+  );
   return id;
 }
 
@@ -338,9 +376,107 @@ export function listMessages(topicId: string) {
     }));
 }
 
+export function listMessagesBySession(sessionId: string) {
+  return db
+    .prepare(`SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC`)
+    .all(sessionId)
+    .map((m: any) => ({
+      ...m,
+      interactive: m.interactive ? JSON.parse(m.interactive) : null,
+      audio_meta: m.audio_meta ? JSON.parse(m.audio_meta) : null,
+    }));
+}
+
 export interface InteractiveLike {
   type: string;
   [k: string]: unknown;
+}
+
+// ---------- sessions ----------
+export interface SessionContext {
+  summary: string;
+  level: string;
+  key_terms: string[];
+  weak_areas: string[];
+  short_notes: string[];
+  updated_at: string;
+}
+
+export function defaultContext(): SessionContext {
+  return { summary: "", level: "unknown", key_terms: [], weak_areas: [], short_notes: [], updated_at: "" };
+}
+
+export function listSessions(userId: string, opts: { limit?: number } = {}) {
+  return db
+    .prepare(
+      `SELECT id, user_id, domain, domain_locked, status, topic_count, created_at, updated_at, closed_at
+       FROM sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?`
+    )
+    .all(userId, opts.limit ?? 50);
+}
+
+export function getLastOpenSession(userId: string) {
+  return db
+    .prepare(
+      `SELECT * FROM sessions WHERE user_id = ? AND status='open' ORDER BY updated_at DESC LIMIT 1`
+    )
+    .get(userId) as any;
+}
+
+export function getSession(id: string) {
+  return db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) as any;
+}
+
+export function createSession(
+  userId: string,
+  domain: string,
+  opts: { domainLocked?: boolean } = {}
+) {
+  const id = uid();
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO sessions (id, user_id, domain, domain_locked, status, context, topic_count, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'open', '{}', 0, ?, ?)`
+  ).run(id, userId, (domain || "").trim() || "New session", opts.domainLocked ? 1 : 0, now, now);
+  return id;
+}
+
+export function renameSession(id: string, newDomain: string) {
+  // Any successful user-driven rename auto-locks the domain so the heuristic
+  // (Task 3) stops overriding it. To un-lock, call setSessionDomainLocked(false).
+  const now = nowIso();
+  const result = db
+    .prepare(`UPDATE sessions SET domain=?, domain_locked=1, updated_at=? WHERE id=? AND domain_locked=0`)
+    .run((newDomain || "").trim() || "New session", now, id);
+  return result.changes; // 0 if locked, 1 if renamed
+}
+
+export function touchSession(id: string) {
+  db.prepare(`UPDATE sessions SET updated_at=? WHERE id=?`).run(nowIso(), id);
+}
+
+export function closeSession(id: string) {
+  db.prepare(`UPDATE sessions SET status='closed', closed_at=?, updated_at=? WHERE id=?`).run(nowIso(), nowIso(), id);
+}
+
+export function setSessionContext(id: string, ctx: SessionContext) {
+  db.prepare(`UPDATE sessions SET context=?, updated_at=? WHERE id=?`).run(JSON.stringify(ctx), nowIso(), id);
+}
+
+export function getSessionContext(id: string): SessionContext {
+  const s = getSession(id);
+  if (s?.context) {
+    try { return JSON.parse(s.context) as SessionContext; } catch { return defaultContext(); }
+  }
+  return defaultContext();
+}
+
+export function bumpSessionTopicCount(id: string) {
+  db.prepare(`UPDATE sessions SET topic_count=topic_count+1, updated_at=? WHERE id=?`).run(nowIso(), id);
+}
+
+export function setSessionDomainLocked(id: string, locked: boolean) {
+  db.prepare(`UPDATE sessions SET domain_locked=?, updated_at=? WHERE id=?`).run(locked ? 1 : 0, nowIso(), id);
 }
 
 // Cast helper: InteractivePayload union members lack index signatures, so a
