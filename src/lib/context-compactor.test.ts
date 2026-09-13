@@ -25,10 +25,10 @@ describe("context-compactor merge", () => {
     expect(merged.short_notes).toEqual(["the student confused ATP with ADP"]);
   });
 
-  it("caps the lists", () => {
+  it("caps the lists to MAX_KEY_TERMS=12; oldest dropped, newest kept within incoming", () => {
     const prev: SessionContext = {
       ...defaultContext(),
-      key_terms: Array.from({ length: 10 }, (_, i) => `t${i}`),
+      key_terms: Array.from({ length: 10 }, (_, i) => `t${i}`), // t0..t9
       weak_areas: Array.from({ length: 5 }, (_, i) => `w${i}`),
       short_notes: Array.from({ length: 7 }, (_, i) => `n${i}`),
     };
@@ -39,8 +39,9 @@ describe("context-compactor merge", () => {
       new_weak: ["wA", "wB"],
       new_notes: ["nA", "nB", "nC"],
     });
-    expect(merged.key_terms.length).toBe(12); // last 12
-    expect(merged.key_terms.slice(-3)).toEqual(["tA", "tB", "tC"]);
+    expect(merged.key_terms.length).toBe(12); // first 12 unique
+    // The 3 incoming terms are at positions 10, 11, 12 — but cap is 12, so tC is dropped (last in)
+    expect(merged.key_terms).toEqual(["t0","t1","t2","t3","t4","t5","t6","t7","t8","t9","tA","tB"]);
     expect(merged.weak_areas.length).toBeLessThanOrEqual(6);
     expect(merged.short_notes.length).toBeLessThanOrEqual(8);
   });
