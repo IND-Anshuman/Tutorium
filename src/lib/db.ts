@@ -294,9 +294,11 @@ export function saveMaterial(
 }
 
 export function getMaterial(topicId: string, type: string) {
-  return db
+  const row = db
     .prepare(`SELECT * FROM materials WHERE topic_id = ? AND type = ? ORDER BY created_at DESC`)
     .get(topicId, type) as any;
+  if (!row) return null;
+  return { ...row, content: JSON.parse(row.content || "{}") };
 }
 
 export function getLatestMaterialByType(topicId: string, type: string) {

@@ -13,7 +13,7 @@ import {
   createJob,
   asInteractive,
 } from "@/lib/db";
-import { classifyMessage, updateMemory, applyMemoryUpdate, isMemoryWorthy } from "@/lib/agents";
+import { classifyMessage, updateMemory, applyMemoryUpdate, isMemoryWorthy, resolveIntentFromText, isTeachQuestion } from "@/lib/agents";
 import { llmRuntimeLabel } from "@/lib/llm";
 import { orchestrateTurn, type OrcCtx } from "@/lib/orchestrate";
 import { startJobRunner } from "@/lib/jobrunner";
@@ -74,10 +74,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // #3 token opt: when the topic is already locked, the classifier only needs
-    // to pick an INTENT (subject/topic are overridden below) — drop history and
-    // the full message-width so this cheap call stays cheap.
-    let classification = await classifyMessage(message, topic ? [] : history);
+    // #3 token opt + normal-use safeguard: when the topic is already locked, the
+    // classifier only needs to pick an INTENT. For obvious keyword requests we
+    // skip the LLM entirely (instant, zero tokens, no model dependency); only
+    // genuinely ambiguous messages reach the classifier (with empty history).
+    const fastIntent = topic ? resolveIntentFromText(message) : null;
+    let classification = fastIntent
+      ? { subject: subject.name, subcategory: "General", topic: topic.title, intent: fastIntent, confidence: 1 }
+      : await classifyMessage(message, topic ? [] : history);
 
     if (subject && topic) {
       classification = { ...classification, subject: subject.name, topic: topic.title };
@@ -85,6 +89,12 @@ export async function POST(req: NextRequest) {
     if (!topic) {
       subject = findOrCreateSubject(userId, classification.subject);
       topic = findOrCreateTopic(subject.id, classification.topic, classification.subcategory);
+    }
+
+    // Guardrail: a clear question misclassified as something else (flaky model)
+    // should still teach — never let an obvious "explain X" become say_it_back.
+    if (isTeachQuestion(message, classification.intent)) {
+      classification = { ...classification, intent: "teach_topic" };
     }
 
     saveMessage(topic.id, "user", message, null, body.transcriptMeta || null);

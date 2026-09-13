@@ -9,7 +9,7 @@
 //  - Compact system prompts, resent on every call so they're a fixed tax (#5).
 
 import { llmJson } from "./llm";
-import type { Classification, StudyPack, Flashcard, QuizItem, MemoryUpdate, ChatMessage } from "./types";
+import type { Classification, StudyPack, Flashcard, QuizItem, MemoryUpdate, ChatMessage, Intent } from "./types";
 
 // ---------- classifier ----------
 export async function classifyMessage(message: string, history: ChatMessage[]): Promise<Classification> {
@@ -95,10 +95,22 @@ export async function createStudyPack(args: {
   subject: string;
   brief: string;
 }): Promise<StudyPack> {
+  // Resilient: each section is best-effort, so a single flaky call can't wipe the pack.
+  // (Promise.allSettled would still require touching every branch; explicit catches
+  //  keep the successful sections going when one fails.)
   const [core, assess, story] = await Promise.all([
-    packCore({ topic: args.topic, subject: args.subject, brief: args.brief }),
-    packAssess({ topic: args.topic, brief: args.brief }),
-    packStory({ topic: args.topic, brief: args.brief }),
+    packCore({ topic: args.topic, subject: args.subject, brief: args.brief }).catch((e) => {
+      console.warn("packCore failed:", (e as Error).message);
+      return { clean_notes: "", reviewer: "", summary: "" };
+    }),
+    packAssess({ topic: args.topic, brief: args.brief }).catch((e) => {
+      console.warn("packAssess failed:", (e as Error).message);
+      return { flashcards: [], quiz: [] };
+    }),
+    packStory({ topic: args.topic, brief: args.brief }).catch((e) => {
+      console.warn("packStory failed:", (e as Error).message);
+      return "";
+    }),
   ]);
   return {
     clean_notes: core.clean_notes,
@@ -136,6 +148,9 @@ Return JSON {"reply": markdown ~150-220 words, "key_terms": [4-8 terms you used]
     user: `Topic: ${args.topic} (${args.subject})
 Learning style: ${args.profile?.learning_style || "unknown"}; weaknesses: ${(args.profile?.weaknesses || []).join(", ") || "none"}; strengths: ${(args.profile?.strengths || []).join(", ") || "none"}
 ${args.brief ? `Context:\n"""${args.brief}"""\n` : ""}
+Recent conversation:
+${args.history.slice(-3).map((m) => `${m.role}: ${m.content.slice(0, 140)}`).join("\n") || "(none)"}
+
 Student: """${args.question.slice(0, 1200)}"""`,
     maxTokens: 900,
   });
@@ -225,6 +240,39 @@ export async function gradeTeachBack(args: {
 // Only fire the memory LLM call when the exchange carries a durable signal.
 const WORTHY_PATTERN =
   /\b(i am|i'm|im|i want|i like|i prefer|my goal|struggle|hard for me|don't understand|dont understand|not good at|weak in|learn better|best way|could you|please help|bad day|good day|i got|i scored|test tomorrow|exam|prefer)\b/i;
+
+// ---------- deterministic intent fast-path ----------
+// For obvious material requests the classifier LLM is overkill — these keywords
+// map deterministically to an intent, so follow-ups resolve instantly with zero
+// tokens and no dependence on model availability.
+export function resolveIntentFromText(message: string): Intent | null {
+  const m = (message || "").toLowerCase().trim();
+  if (!m) return null;
+  if (/\b(quiz( me)?|test me|question me|take the quiz)\b/.test(m)) return "make_quiz";
+  if (/\b(flashcards?|flash cards|cards)\b/.test(m) && /\b(make|show|see|create|build|give|review|practice)\b/.test(m)) return "make_flashcards";
+  if (/\b(summar(ize|y)|recap|overview|main points|key points)\b/.test(m)) return "make_summary";
+  if (/\b(story|analogy|tell me a story|as a story)\b/.test(m)) return "make_story";
+  if (/\b(visual|diagram|picture|chart|infographic|draw|illustrate)\b/.test(m)) return "make_visual";
+  if (/\b(show|see|view|open|retrieve|pull up|bring up).*(what i have|my stuff|my materials|my stuff|study pack|everything)\b/.test(m)) return "retrieve_material";
+  if (/\b(say.?it.?back|read.*aloud|pronounc|practice saying|pronunciation|read back)\b/.test(m)) return "say_it_back";
+  if (/\b(make|create|build).*(study pack|notes|pack|reviewer)\b/.test(m)) return "create_study_pack";
+  return null;
+}
+
+// Guardrails so flaky model output can't interrupt normal use. Forces teach_topic
+// for clear questions unless the message is an explicit material request.
+const QUESTION_RE =
+  /\b(what|whats|what's|how|why|when|where|who|which|can you|could you|explain|define|describe|tell me|difference between|mean|meaning of|is it|does this|how does|how do|what does|what is)\b/i;
+const MATERIAL_INTENTS = new Set<Intent>([
+  "create_study_pack", "make_flashcards", "make_quiz", "make_summary", "make_story", "make_visual", "retrieve_material",
+]);
+
+export function isTeachQuestion(message: string, intent: Intent): boolean {
+  const m = (message || "").trim();
+  if (!m) return false;
+  if (MATERIAL_INTENTS.has(intent)) return false; // explicit request wins
+  return QUESTION_RE.test(m.slice(0, 120));
+}
 
 export function isMemoryWorthy(message: string, reply: string): boolean {
   const msg = (message || "").slice(0, 400).toLowerCase();
