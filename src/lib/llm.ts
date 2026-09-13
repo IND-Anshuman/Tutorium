@@ -4,7 +4,15 @@
 //   TUTORIUM_LLM_MODEL         (defaults to zai-org/GLM-5.3-Flash)
 //   TUTORIUM_LLM_FALLBACK_MODEL
 // So switching providers (Featherless → Token Factory / OpenRouter / Groq / etc.)
-// is purely an .env change. Retry with backoff + tolerant JSON extraction.
+// is purely an .env change.
+//
+// Latency design:
+//  - Two timeouts: PRIMARY (fast — give up + fall back quickly) and FALLBACK (patient).
+//  - Empty LLM response is non-retryable (the model is up but confused; a retry
+//    burns another 20s for the same answer), so it goes straight to fallback.
+//  - AbortSignal is plumbed through so the route's Cancel button can interrupt
+//    mid-call (not just between calls).
+//  - JSON extraction is tolerant + retryable JSON parses against the same fallback chain.
 
 export interface LlmMessage {
   role: "system" | "user" | "assistant";
@@ -24,7 +32,6 @@ const LLM_PROVIDER =
   (() => {
     try {
       const host = new URL(BASE_URL).hostname || "";
-      // "api.tokfactory.ai" -> "tokfactory", "openrouter.ai" -> "openrouter"
       const parts = host.split(".");
       const label = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
       return label === "api" || !label ? (parts[0] || "openai-compatible") : label;
@@ -37,33 +44,39 @@ const PRIMARY_MODEL =
 const FALLBACK_MODEL =
   process.env.TUTORIUM_LLM_FALLBACK_MODEL || "Qwen/Qwen2.5-7B-Instruct";
 const API_KEY = process.env.TUTORIUM_LLM_API_KEY || process.env.FEATHERLESS_API_KEY || "";
-const REQUEST_TIMEOUT_MS = Number(process.env.TUTORIUM_LLM_TIMEOUT_MS || 45_000);
-const MAX_RETRIES = 2;
-const INITIAL_BACKOFF_MS = 800;
+const PRIMARY_TIMEOUT_MS = Number(process.env.TUTORIUM_LLM_PRIMARY_TIMEOUT_MS || 22_000);
+const FALLBACK_TIMEOUT_MS = Number(process.env.TUTORIUM_LLM_FALLBACK_TIMEOUT_MS || 35_000);
+const RETRY_BACKOFF_MS = Number(process.env.TUTORIUM_LLM_RETRY_BACKOFF_MS || 600);
+// Retry only on transient HTTP errors / network errors, NOT on empty responses
+// (which would waste another full primary timeout for the same result).
+const MAX_RETRIES = 1;
 
-function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(t));
+  // Bridge outer signal into our controller — when the route cancels, we cancel.
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+    clearTimeout(t);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  });
 }
 
 function responseFormat(): Record<string, unknown> {
-  // Ask the provider for strict JSON when it's supported; harmless otherwise.
   return { response_format: { type: "json_object" } };
 }
 
-// Tolerant JSON extraction: strip fences, find outermost object, repair common
-// truncation/quote escapes the way a demo needs so a single bad character
-// doesn't kill the turn.
+// Tolerant JSON extraction: strip fences, find outermost object/array.
 export function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   let candidate = (fenced ? fenced[1] : text).trim();
-
-  // Strip prose the model sometimes prepends/appends ("Here is your JSON: ...")
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
-    // Some models emit a JSON array instead — try that.
     const as = candidate.indexOf("[");
     const ae = candidate.lastIndexOf("]");
     if (as !== -1 && ae > as) return candidate.slice(as, ae + 1);
@@ -72,47 +85,74 @@ export function extractJson(text: string): string {
   return candidate.slice(start, end + 1);
 }
 
+class EmptyResponseError extends Error {
+  constructor() { super("empty LLM response"); this.name = "EmptyResponseError"; }
+}
+class AbortedError extends Error {
+  constructor() { super("aborted"); this.name = "AbortError"; }
+}
+
 async function callOnce(
   model: string,
   system: string,
   user: string,
   maxTokens: number,
-  temperature: number
+  temperature: number,
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<string> {
-  const res = await fetchWithTimeout(
-    `${BASE_URL}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json",
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: `${system}\n\nRespond with ONLY a valid JSON object. No markdown fences, no commentary before or after.` },
+            { role: "user", content: user },
+          ],
+          temperature,
+          max_tokens: maxTokens,
+          ...responseFormat(),
+        }),
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: `${system}\n\nRespond with ONLY a valid JSON object. No markdown fences, no commentary before or after.` },
-          { role: "user", content: user },
-        ],
-        temperature,
-        max_tokens: maxTokens,
-        ...responseFormat(),
-      }),
-    },
-    REQUEST_TIMEOUT_MS
-  );
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    // 401/403 = key problem; retrying won't help.
-    if (res.status === 401 || res.status === 403) {
-      throw new LlmError(`Featherless auth ${res.status}: ${text.slice(0, 160)}`);
+      timeoutMs,
+      signal
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      if (res.status === 401 || res.status === 403) {
+        throw new LlmError(`Featherless auth ${res.status}: ${text.slice(0, 160)}`);
+      }
+      throw new LlmError(`Featherless ${res.status}: ${text.slice(0, 300)}`);
     }
-    throw new LlmError(`Featherless ${res.status}: ${text.slice(0, 300)}`);
+    const payload = await res.json();
+    const content: string = payload.choices?.[0]?.message?.content || "";
+    if (!content) throw new EmptyResponseError();
+    return content;
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new AbortedError();
+    throw e;
   }
-  const payload = await res.json();
-  const content: string = payload.choices?.[0]?.message?.content || "";
-  if (!content) throw new LlmError("empty LLM response");
-  return content;
+}
+
+// Try to parse; if it fails, retry the *parse* once (transient JSON quirks — e.g.
+// a stray quote mid-string — sometimes succeed with the same payload).
+function safeParse<T>(raw: string): T {
+  try {
+    return JSON.parse(extractJson(raw)) as T;
+  } catch (e1) {
+    try {
+      return JSON.parse(extractJson(raw)) as T;
+    } catch (e2) {
+      throw e1; // surface original
+    }
+  }
 }
 
 export async function llmJson<T>(args: {
@@ -120,6 +160,7 @@ export async function llmJson<T>(args: {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  signal?: AbortSignal;
 }): Promise<{ data: T; runtime: LlmRuntime }> {
   if (!API_KEY || API_KEY === "placeholder") {
     throw new LlmError("No LLM API key set (TUTORIUM_LLM_API_KEY or FEATHERLESS_API_KEY) — run `npm run env:sync`");
@@ -128,28 +169,38 @@ export async function llmJson<T>(args: {
   const maxTokens = args.maxTokens ?? 2000;
   const temperature = args.temperature ?? 0.3;
   let lastErr: Error | null = null;
+  let emptyRetried = false;
 
-  // primary model, with retry/backoff
+  // Primary model — fast fail on transient errors, single retry; empty response
+  // is non-retryable and immediately drops to fallback.
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, INITIAL_BACKOFF_MS * 2 ** (attempt - 1)));
+    if (args.signal?.aborted) throw new AbortedError();
+    if (attempt > 0) await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS));
     try {
-      const content = await callOnce(PRIMARY_MODEL, args.system, args.user, maxTokens, temperature);
-      const data = JSON.parse(extractJson(content)) as T;
-      return { data, runtime: { provider: LLM_PROVIDER, model: PRIMARY_MODEL, fallback: false } };
+      const content = await callOnce(PRIMARY_MODEL, args.system, args.user, maxTokens, temperature, PRIMARY_TIMEOUT_MS, args.signal);
+      return { data: safeParse<T>(content), runtime: { provider: LLM_PROVIDER, model: PRIMARY_MODEL, fallback: false } };
     } catch (e) {
-      lastErr = e as Error;
-      // don't retry auth errors
-      if (e instanceof LlmError && /auth|401|403/.test(e.message)) break;
+      const err = e as Error;
+      lastErr = err;
+      if (err.name === "AbortError") throw err;
+      // auth errors are not retryable
+      if (err instanceof LlmError && /auth|401|403/.test(err.message)) break;
+      // empty LLM response: skip the rest of the primary retries, drop to fallback
+      if (err instanceof EmptyResponseError) {
+        if (!emptyRetried) { emptyRetried = true; continue; }
+        break;
+      }
     }
   }
 
-  // fallback model, single attempt, best effort
+  // Fallback model — patient timeout, single attempt.
   try {
+    if (args.signal?.aborted) throw new AbortedError();
     console.warn(`primary ${PRIMARY_MODEL} failed, falling back to ${FALLBACK_MODEL}:`, lastErr?.message);
-    const content = await callOnce(FALLBACK_MODEL, args.system, args.user, maxTokens, temperature);
-    const data = JSON.parse(extractJson(content)) as T;
-    return { data, runtime: { provider: LLM_PROVIDER, model: FALLBACK_MODEL, fallback: true } };
+    const content = await callOnce(FALLBACK_MODEL, args.system, args.user, maxTokens, temperature, FALLBACK_TIMEOUT_MS, args.signal);
+    return { data: safeParse<T>(content), runtime: { provider: LLM_PROVIDER, model: FALLBACK_MODEL, fallback: true } };
   } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
     lastErr = e as Error;
   }
 
@@ -160,7 +211,6 @@ export function llmConfigured() {
   return Boolean(API_KEY && API_KEY !== "placeholder");
 }
 
-// Human/provider label for surfacing in API responses + the health check.
 export function llmRuntimeLabel() {
   return llmConfigured() ? LLM_PROVIDER : "not-configured";
 }

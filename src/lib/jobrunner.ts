@@ -56,6 +56,9 @@ async function runJob(jobId: string) {
     message: payload.message,
     getMaterial,
     saveMaterial,
+    // jobrunner uses no signal — cancelling a queued background job is out of scope
+    // (clients can ignore the poll result). A future improvement is to track
+    // an AbortController per job so the route's Cancel can interrupt in-flight jobs.
   };
 
   const result = await orchestrateTurn(ctx);

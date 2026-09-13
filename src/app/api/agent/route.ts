@@ -37,6 +37,8 @@ interface AgentRequestBody {
 }
 
 export async function POST(req: NextRequest) {
+  // Declared up-front so the catch block can check whether the request was cancelled.
+  const abort = new AbortController();
   try {
     const body = (await req.json()) as AgentRequestBody;
     const userId = sanitizeUserId(body.userId);
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
     const fastIntent = topic ? resolveIntentFromText(message) : null;
     let classification = fastIntent
       ? { subject: subject.name, subcategory: "General", topic: topic.title, intent: fastIntent, confidence: 1 }
-      : await classifyMessage(message, topic ? [] : history);
+      : await classifyMessage(message, topic ? [] : history, abort.signal);
 
     if (subject && topic) {
       classification = { ...classification, subject: subject.name, topic: topic.title };
@@ -134,6 +136,7 @@ export async function POST(req: NextRequest) {
       getMaterial,
       saveMaterial,
       message,
+      signal: abort.signal,
     };
 
     const result = await orchestrateTurn(ctx);
@@ -158,6 +161,11 @@ export async function POST(req: NextRequest) {
       runtime: llmRuntimeLabel(),
     });
   } catch (err) {
+    // User-initiated cancel: surface as 499-like response so the client doesn't see 500.
+    const aErr = err as Error | undefined;
+    if (aErr?.name === "AbortError" || abort?.signal.aborted) {
+      return NextResponse.json({ cancelled: true }, { status: 499 });
+    }
     console.error("agent error:", err);
     return NextResponse.json({ error: (err as Error).message || "agent failed" }, { status: 500 });
   }

@@ -36,6 +36,7 @@ export interface OrcCtx {
   getMaterial: (topicId: string, type: string) => { content: Record<string, any> } | null;
   saveMaterial: (topicId: string, type: string, title: string, content: Record<string, unknown>) => string;
   message: string;
+  signal?: AbortSignal;
 }
 
 // Getter for the scene brief (or fall back to stored notes / the raw message).
@@ -59,6 +60,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         topic: topicTitle,
         subject: subjectName,
         sourceText: message,
+        signal: ctx.signal,
       });
       ctx.saveMaterial(topicId, "brief", `${topicTitle} — Brief`, {
         text: brief.brief,
@@ -70,6 +72,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         topic: topicTitle,
         subject: subjectName,
         brief: brief.brief,
+        signal: ctx.signal,
       });
       if (pack.clean_notes) ctx.saveMaterial(topicId, "clean_notes", `${topicTitle} — Clean Notes`, { text: pack.clean_notes });
       if (pack.reviewer) ctx.saveMaterial(topicId, "reviewer", `${topicTitle} — Reviewer`, { text: pack.reviewer });
@@ -101,7 +104,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         };
       }
       const brief = getBrief(ctx);
-      const cards = await createFlashcardsOnly({ topic: topicTitle, brief });
+      const cards = await createFlashcardsOnly({ topic: topicTitle, brief, signal: ctx.signal });
       if (!cards?.length) {
         return { reply: `I couldn't build flashcards for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_flashcards" };
       }
@@ -123,7 +126,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         };
       }
       const brief = getBrief(ctx);
-      const questions = await createQuizOnly({ topic: topicTitle, brief });
+      const questions = await createQuizOnly({ topic: topicTitle, brief, signal: ctx.signal });
       if (!questions?.length) {
         return { reply: `I couldn't build a quiz for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_quiz" };
       }
@@ -164,7 +167,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
       }
       const brief = getBrief(ctx);
       if (brief && brief.length > 20) {
-        const viz = await generateVisual({ topic: topicTitle, subject: subjectName, brief });
+        const viz = await generateVisual({ topic: topicTitle, subject: subjectName, brief, signal: ctx.signal });
         ctx.saveMaterial(topicId, "html_visual", viz.title, { title: viz.title, html: viz.html });
         return {
           reply: `Here's the visual guide for **${topicTitle}**.`,
@@ -220,6 +223,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         history: ctx.history,
         profile: ctx.profile || undefined,
         brief: getBrief(ctx),
+        signal: ctx.signal,
       });
       if (taught.keyTerms?.length) {
         ctx.saveMaterial(topicId, "sayitback", `${topicTitle} — Say-It-Back passage`, {
