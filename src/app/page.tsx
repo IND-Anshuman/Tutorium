@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import InteractiveMessage from "@/components/chat/InteractiveMessage";
 import Markdown from "@/components/chat/Markdown";
 import Waveform from "@/components/ui/Waveform";
-import { EmptyState, StatusDot } from "@/components/ui/primitives";
+import { EmptyState } from "@/components/ui/primitives";
 import SessionsRail from "@/components/sessions/SessionsRail";
 import type { InteractivePayload } from "@/lib/types";
 
@@ -462,20 +462,79 @@ export default function Home() {
 
 return (
     <div className="flex h-screen flex-col">
+      {railOpen && (
+        <div
+          className="rail-backdrop"
+          onClick={() => setRailOpen(false)}
+          aria-hidden
+        />
+      )}
+      <SessionsRail
+        currentSessionId={sessionId}
+        open={railOpen}
+        onClose={() => setRailOpen(false)}
+      />
+
       {/* top bar */}
       <header className="sticky top-0 z-[var(--z-sticky)] border-b" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 88%, transparent)", backdropFilter: "blur(12px)" }}>
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold" style={{ background: "var(--brand)", color: "var(--on-brand)" }}>
-                T
+            <button
+              className="rail-toggle"
+              aria-label="Open sessions list"
+              onClick={() => setRailOpen((o) => !o)}
+            >
+              <span className="rail-toggle-icon" aria-hidden>
+                <span /><span /><span />
               </span>
+              <span className="rail-toggle-label">Sessions</span>
+              <span className="rail-toggle-pulse" aria-hidden />
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="brand-mark" aria-hidden>T</span>
               <span className="text-lg font-bold tracking-tight">Tutorium</span>
             </div>
-            {topicTitle && (
-              <span className="hidden items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium sm:inline-flex" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--ink-2)" }}>
-                <StatusDot status="ok" />
-                {topicTitle}
+            {(domain || topicTitle) && (
+              <span className="domain-header" title={domain || topicTitle}>
+                <span className="dot" />
+                {editingDomain ? (
+                  <input
+                    className="domain-edit-input"
+                    autoFocus
+                    value={domainDraft}
+                    onChange={(e) => setDomainDraft(e.target.value)}
+                    onBlur={async () => {
+                      setEditingDomain(false);
+                      if (!sessionId || !domainDraft.trim()) return;
+                      try {
+                        await fetch(`/api/sessions/${sessionId}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ domain: domainDraft.trim() }),
+                        });
+                        setDomain(domainDraft.trim());
+                        setDomainLocked(true);
+                      } catch { /* ignore */ }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      if (e.key === "Escape") setEditingDomain(false);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <span className="domain-header-text">{domain || topicTitle}</span>
+                    {!domainLocked && sessionId && (
+                      <button
+                        className="domain-edit"
+                        aria-label="Rename session domain"
+                        onClick={() => { setDomainDraft(domain || ""); setEditingDomain(true); }}
+                      >
+                        ✎
+                      </button>
+                    )}
+                  </>
+                )}
               </span>
             )}
           </div>
@@ -495,16 +554,59 @@ return (
         <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-6">
           {messages.length === 0 ? (
             <EmptyState
-              icon="📚"
-              title="Say it. Own it."
-              body="Speak a question or paste messy notes. Tutorium builds flashcards, quizzes, and a Say-It-Back drill you can hear yourself master."
+              icon="🪴"
+              title="Pick a domain. Own the rest of the conversation."
+              body="Tutorium remembers what you've learned, what tripped you up, and the terms you keep forgetting — across every message in this session. Start one below."
               actions={
-                <>
-                  <button className="btn btn-lamp" onClick={() => startRecording()}>
-                    <Waveform active={recording} /> Hold to speak
-                  </button>
-                  <a href="/library" className="btn btn-ghost">Open your library</a>
-                </>
+                <div className="empty-cta">
+                  <div className="empty-cta-row">
+                    <span className="empty-cta-tag" aria-hidden>1</span>
+                    <input
+                      aria-label="Domain"
+                      placeholder="e.g. Photosynthesis for USMLE · Spanish travel phrases · Rust ownership"
+                      className="domain-edit-input empty-cta-input"
+                      id="domain-input"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          (e.target as HTMLInputElement).blur();
+                          (document.getElementById("start-session-btn") as HTMLButtonElement | null)?.click();
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="empty-cta-row empty-cta-buttons">
+                    <button
+                      id="start-session-btn"
+                      className="btn btn-primary empty-cta-primary"
+                      onClick={async () => {
+                        const el = document.getElementById("domain-input") as HTMLInputElement | null;
+                        const v = el?.value.trim() || "";
+                        const r = await fetch("/api/sessions", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ userId: USERID, domain: v }),
+                        });
+                        const d = await r.json();
+                        window.location.href = `/?session=${d.id}`;
+                      }}
+                    >
+                      Start session →
+                    </button>
+                    <button
+                      className="btn btn-lamp"
+                      onClick={() => startRecording()}
+                      aria-label="Record a voice question"
+                    >
+                      <Waveform active={recording} /> Hold to speak
+                    </button>
+                    <a href="/library" className="btn btn-ghost">Open library</a>
+                  </div>
+                  <ul className="empty-cta-steps" aria-label="How Tutorium sessions work">
+                    <li><span className="empty-cta-num" aria-hidden>1</span><span><b>Name your domain.</b> One line is enough — calculus, vocabulary, a body system.</span></li>
+                    <li><span className="empty-cta-num" aria-hidden>2</span><span><b>Speak or type.</b> The tutor builds flashcards, quizzes, and a Say-It-Back drill on the fly.</span></li>
+                    <li><span className="empty-cta-num" aria-hidden>3</span><span><b>Come back later.</b> The domain chip and context strip carry the level you left at.</span></li>
+                  </ul>
+                </div>
               }
             />
           ) : (
