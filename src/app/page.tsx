@@ -6,6 +6,8 @@ import Markdown from "@/components/chat/Markdown";
 import Waveform from "@/components/ui/Waveform";
 import { EmptyState } from "@/components/ui/primitives";
 import SessionsRail from "@/components/sessions/SessionsRail";
+import MessageBubble from "@/components/chat/MessageBubble";
+import TranscriptBadge from "@/components/chat/TranscriptBadge";
 import type { InteractivePayload } from "@/lib/types";
 
 interface ChatMsg {
@@ -21,52 +23,34 @@ const USERID = "demo-user";
 
 // ---------- helpers ----------
 
-function TranscriptBadge({ meta }: { meta?: { wordCount?: number; avgConfidence?: number } | null }) {
-  if (!meta || meta.avgConfidence === undefined) return null;
-  const pct = Math.round((meta.avgConfidence || 0) * 100);
-  const color = pct >= 90 ? "var(--success)" : pct >= 60 ? "var(--warning)" : "var(--danger)";
-  return (
-    <span
-      className="ml-2 rounded px-1.5 py-0.5 text-[10px]"
-      style={{ background: "var(--surface-2)", color, border: "1px solid var(--border)" }}
-      title="Speechmatics word-confidence on this voice message"
-    >
-      🎙 {pct}% clear
-    </span>
-  );
+function uid() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-function SpeakButton({ text }: { text: string }) {
-  const [speaking, setSpeaking] = useState(false);
-  const speak = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!("speechSynthesis" in window)) return;
-    if (speaking) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-      return;
+function copyTextToClipboard(text: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text);
+      return true;
     }
-    const clean = text.replace(/[#*_`>\[\]]/g, " ").replace(/\s+/g, " ").trim();
-    if (!clean) return;
-    const u = new SpeechSynthesisUtterance(clean);
-    u.rate = 1;
-    u.pitch = 1;
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-    setSpeaking(true);
-  };
-  return (
-    <button
-      onClick={speak}
-      aria-label={speaking ? "Stop speaking" : "Hear this reply read aloud"}
-      className="mt-2 rounded-full px-2.5 py-1 text-[11px]"
-      style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: speaking ? "var(--lamp)" : "var(--ink-3)" }}
-    >
-      {speaking ? "■ Stop" : "🔊 Listen"}
-    </button>
-  );
+  } catch {
+    /* fall through */
+  }
+  // Fallback: hidden textarea
+  try {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function pollJob(jobId: string, signal: AbortSignal, onDone: (job: any) => void) {
@@ -85,10 +69,6 @@ async function pollJob(jobId: string, signal: AbortSignal, onDone: (job: any) =>
     }
     await new Promise((r) => setTimeout(r, 1500));
   }
-}
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
 // ---------- component ----------
@@ -396,6 +376,18 @@ export default function Home() {
     [startSibRecording]
   );
 
+  // ---------- message helpers (copy / regenerate) ----------
+  const copyMessage = useCallback((text: string) => {
+    copyTextToClipboard(text);
+  }, []);
+
+  const regenerate = useCallback((userMsg: ChatMsg) => {
+    if (!userMsg.content || sendState !== "idle") return;
+    // Remove the existing user message + its assistant reply, then re-send.
+    setMessages((m) => m.slice(0, m.findIndex((x) => x.id === userMsg.id)));
+    void send(userMsg.content, userMsg.transcriptMeta || (userMsg.fromVoice ? { fromVoice: true } : undefined));
+  }, [sendState, send]);
+
   // ---------- restore session on mount (FIX 1) ----------
   useEffect(() => {
     let cancelled = false;
@@ -611,42 +603,15 @@ return (
             />
           ) : (
             <div className="space-y-5">
-              {messages.map((m) => (
-                <div key={m.id} className={`msg-in flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className="max-w-[86%] rounded-2xl px-4 py-3"
-                    style={{
-                      background: m.role === "user" ? "var(--brand)" : "var(--surface)",
-                      color: m.role === "user" ? "var(--on-brand)" : "var(--on-surface)",
-                      border: m.role === "assistant" ? "1px solid var(--border)" : "none",
-                      boxShadow: "var(--shadow-xs)",
-                    }}
-                  >
-                    {m.role === "assistant" ? (
-                      <Markdown>{m.content}</Markdown>
-                    ) : (
-                      <div className="whitespace-pre-wrap">{m.content}</div>
-                    )}
-                    {m.role === "assistant" ? (
-                      <>
-                        <div className="mt-2 flex items-center gap-2">
-                          <SpeakButton text={m.content} />
-                        </div>
-                        {contextSummary && (
-                          <div className="context-strip" aria-label="Session domain context">
-                            <span className="context-strip-label">Domain context</span>
-                            <span className="context-strip-pill">{contextSummary}</span>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="mt-1 flex items-center justify-end gap-2">
-                        {m.fromVoice && <span className="text-[11px]" style={{ color: "color-mix(in oklab, var(--on-brand) 70%, transparent)" }}>voice · <TranscriptBadge meta={m.transcriptMeta} /></span>}
-                      </div>
-                    )}
-                    {m.interactive && <div className="mt-3"><InteractiveMessage payload={m.interactive} onSayItBackRecord={onSayItBackRecord} /></div>}
-                  </div>
-                </div>
+              {messages.map((m, i) => (
+                <MessageBubble
+                  key={m.id}
+                  msg={m}
+                  isLast={i === messages.length - 1}
+                  contextSummary={contextSummary}
+                  onCopy={copyMessage}
+                  onRegenerate={m.role === "user" ? () => regenerate(m) : undefined}
+                />
               ))}
             </div>
           )}

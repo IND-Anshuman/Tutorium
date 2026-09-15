@@ -382,6 +382,134 @@ button, input, textarea, select { font: inherit; color: inherit; }
   z-index: calc(var(--z-sticky) - 1);
 }
 
+/* ── message bubble shell ──────────────────────────────────── */
+.msg-in {
+  display: flex; align-items: flex-start; gap: var(--space-xs);
+  animation: msg-in var(--dur-base) var(--ease-out) both;
+  margin-bottom: var(--space-md);
+}
+.msg-in--user { justify-content: flex-end; }
+.msg-in--assistant { justify-content: flex-start; }
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-stack {
+  display: flex; flex-direction: column; gap: 4px;
+  max-width: 86%;
+}
+.msg-in--user .msg-stack { align-items: flex-end; }
+.msg-in--assistant .msg-stack { align-items: flex-start; }
+
+.msg-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex: 0 0 auto;
+  border-radius: 50%;
+  font-weight: 800; font-size: var(--text-xs);
+  box-shadow: 0 4px 10px -4px color-mix(in oklab, var(--bg) 80%, transparent);
+}
+.msg-avatar--assistant {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--lamp) 100%);
+  color: var(--brand-ink);
+  margin-top: 4px;
+}
+.msg-avatar--user {
+  background: var(--surface-3); color: var(--ink-2);
+  border: 1px solid var(--border-strong);
+  margin-top: 4px;
+}
+
+.msg-bubble {
+  position: relative;
+  padding: 10px 14px;
+  border-radius: 18px;
+  line-height: 1.55;
+  word-wrap: break-word;
+}
+.msg-bubble--user {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-hover) 100%);
+  color: var(--on-brand);
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 6px 18px -10px color-mix(in oklab, var(--brand) 80%, transparent);
+}
+.msg-bubble--assistant {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 2px 8px -4px color-mix(in oklab, var(--bg) 60%, transparent);
+}
+
+.msg-bubble--assistant :where(p, ul, ol) { color: var(--ink); }
+.msg-bubble--assistant :where(strong) { color: var(--ink); font-weight: 700; }
+.msg-bubble--assistant :where(code) {
+  background: var(--surface-2); color: var(--lamp); padding: 1px 6px;
+  border-radius: 4px; font-size: 0.875em;
+}
+.msg-bubble--assistant :where(pre) {
+  background: var(--bg); color: var(--ink); padding: 10px 12px;
+  border-radius: 8px; overflow-x: auto; border: 1px solid var(--border);
+}
+
+/* typing dots when assistant message has no content yet */
+.typing-dots {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 24px; padding: 0 2px;
+}
+.typing-dots > span {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--lamp);
+  animation: typing 1.2s ease-in-out infinite;
+}
+.typing-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots > span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.55; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* hover-reveal action row */
+.msg-actions {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.msg-bubble--assistant:hover + .msg-actions,
+.msg-bubble--assistant:hover .msg-actions,
+.msg-actions--right { opacity: 1; }
+.msg-in--assistant:hover .msg-actions { opacity: 1; }
+.msg-actions--right { justify-content: flex-end; }
+.msg-action {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: 6px;
+  background: transparent; border: 1px solid transparent;
+  color: var(--ink-3); font-size: 0.6875rem; font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.msg-action:hover { background: var(--surface-2); color: var(--ink); border-color: var(--border); }
+.msg-action--active { color: var(--lamp); border-color: color-mix(in oklab, var(--lamp) 40%, transparent); background: color-mix(in oklab, var(--lamp) 12%, transparent); }
+.msg-action-divider { width: 1px; height: 14px; background: var(--border); margin: 0 4px; align-self: center; }
+.speak-btn--on { color: var(--lamp) !important; border-color: color-mix(in oklab, var(--lamp) 40%, transparent) !important; background: color-mix(in oklab, var(--lamp) 10%, transparent) !important; }
+
+.msg-voice-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 6px; font-size: 0.625rem;
+  color: color-mix(in oklab, var(--on-brand) 75%, transparent);
+  font-weight: 600;
+}
+
+.transcript-badge {
+  display: inline-flex; align-items: center;
+  padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 0.6875rem; font-weight: 600;
+  margin-left: 4px;
+  background: var(--surface-2);
+}
+
 /* ── brand mark (logo square in header) ─────────────────────── */
 .brand-mark {
   display: inline-flex; width: 32px; height: 32px;
