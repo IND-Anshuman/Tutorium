@@ -454,7 +454,7 @@ export default function Home() {
   const busy = sendState === "receiving" || sendState === "running";
 
 return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-screen">
       {railOpen && (
         <div
           className="rail-backdrop"
@@ -469,6 +469,7 @@ return (
       />
 
       {/* top bar */}
+      <div className="flex flex-1 flex-col min-w-0">
       <header className="sticky top-0 z-[var(--z-sticky)] border-b" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 88%, transparent)", backdropFilter: "blur(12px)" }}>
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
           <div className="flex items-center gap-3">
@@ -710,6 +711,7 @@ return (
           <button onClick={stopSibRecording} aria-label="Stop recording" className="btn btn-lamp">Stop</button>
         </div>
       )}
+      </div>
     </div>
   );
 }

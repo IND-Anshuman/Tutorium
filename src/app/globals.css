@@ -262,17 +262,23 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 /* ── sessions rail ─────────────────────────────────────────── */
 .rail {
-  position: fixed; top: 0; left: 0; bottom: 0; width: 280px;
+  width: 280px; flex: 0 0 280px;
   background: color-mix(in oklab, var(--bg) 96%, transparent);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
-  transform: translateX(-100%);
-  transition: transform var(--dur-base) var(--ease-out);
   z-index: var(--z-sticky);
   backdrop-filter: blur(12px);
+  height: 100vh; overflow: hidden;
 }
-.rail[data-open="true"] { transform: translateX(0); }
-@media (min-width: 900px) { .rail { transform: translateX(0); position: sticky; } }
+/* Mobile: drawer that slides in from the left */
+@media (max-width: 899px) {
+  .rail {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    transform: translateX(-100%);
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+  .rail[data-open="true"] { transform: translateX(0); }
+}
 .rail-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--space-md); border-bottom: 1px solid var(--border);
@@ -340,6 +346,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--lamp) 0%, transparent); }
 }
 @media (max-width: 600px) { .rail-toggle-label { display: none; } }
+@media (min-width: 900px) {
+  /* On desktop the rail is always visible, so the toggle button is redundant */
+  .rail-toggle { display: none; }
+}
 
 /* ── main content shifts when rail is open (desktop) ─────────── */
 @media (min-width: 900px) { main.shift { margin-left: 280px; } }
