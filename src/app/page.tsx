@@ -98,6 +98,7 @@ export default function Home() {
   const abortRef = useRef<AbortController | null>(null);
   const genRef = useRef(0); // increment to invalidate in-flight generation callbacks
   const micRef = useRef<MediaRecorder | null>(null);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const micStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recStartRef = useRef(0);
@@ -542,7 +543,17 @@ return (
       </header>
 
       {/* chat area */}
-      <div ref={scrollRef} className="chat-scroll flex-1 overflow-y-auto" role="log" aria-live="polite">
+      <div
+        ref={scrollRef}
+        className="chat-scroll flex-1 overflow-y-auto"
+        role="log"
+        aria-live="polite"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+          setShowJumpToBottom(distFromBottom > 240);
+        }}
+      >
         <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-6">
           {messages.length === 0 ? (
             <EmptyState
@@ -633,6 +644,20 @@ return (
           )}
         </div>
       </div>
+
+      {showJumpToBottom && (
+        <button
+          className="jump-to-bottom"
+          onClick={() => {
+            const el = scrollRef.current;
+            if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          }}
+          aria-label="Scroll to latest message"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9l6 6 6-6"/></svg>
+          Jump to latest
+        </button>
+      )}
 
       {/* composer */}
       <div className="sticky bottom-0 z-[var(--z-sticky)] border-t pb-[env(safe-area-inset-bottom)]" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 92%, transparent)", backdropFilter: "blur(12px)" }}>
