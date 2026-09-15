@@ -453,7 +453,7 @@ export default function Home() {
 
   const busy = sendState === "receiving" || sendState === "running";
 
-return (
+ return (
     <div className="flex h-screen">
       {railOpen && (
         <div
