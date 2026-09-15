@@ -3,6 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+const ICONS: Record<string, string> = {
+  quiz: "✅",
+  flashcards: "🃏",
+  html_visual: "🖼️",
+  say_it_back: "🎙",
+  teach_back: "📝",
+  notes: "📋",
+  reviewer: "🔍",
+  summary: "📑",
+  story: "📖",
+};
+
 export default function StudyPackActions({
   topic,
   topicId,
@@ -36,17 +48,33 @@ export default function StudyPackActions({
   };
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {actions.map((a) => (
-        <button
-          key={a.materialType}
-          onClick={() => go(a.materialType, a.label)}
-          disabled={busy !== null}
-          className="btn btn-ghost"
-        >
-          {busy === a.materialType ? "…" : a.label}
-        </button>
-      ))}
+    <div className="widget-card widget-card--actions">
+      <div className="widget-head">
+        <span className="widget-icon" aria-hidden>📚</span>
+        <div className="widget-title">
+          <span className="widget-label">Study pack</span>
+          <span className="widget-sub">tap any to drill deeper</span>
+        </div>
+        <span className="widget-counter">{actions.length}</span>
+      </div>
+      <div className="actions-grid">
+        {actions.map((a) => {
+          const icon = ICONS[a.materialType] || "📘";
+          const isBusy = busy === a.materialType;
+          return (
+            <button
+              key={a.materialType}
+              onClick={() => go(a.materialType, a.label)}
+              disabled={busy !== null}
+              className={`action-tile ${isBusy ? "action-tile--busy" : ""}`}
+              type="button"
+            >
+              <span className="action-tile-icon" aria-hidden>{icon}</span>
+              <span className="action-tile-label">{isBusy ? "Loading…" : a.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

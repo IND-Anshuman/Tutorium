@@ -48,63 +48,80 @@ export default function MiniQuiz({ questions, topicId }: { questions: QuizItem[]
 
   if (done) {
     const pct = score / questions.length;
+    const tone =
+      pct >= 0.7 ? "var(--success)" :
+      pct >= 0.5 ? "var(--warning)" :
+      "var(--danger)";
     return (
-      <div className="card p-6 text-center">
-        <div className="text-4xl font-bold tracking-tight" style={{ color: pct >= 0.7 ? "var(--brand)" : pct >= 0.5 ? "var(--warning)" : "var(--danger)" }}>
-          {score}
-          <span className="text-lg font-medium" style={{ color: "var(--ink-3)" }}>/{questions.length}</span>
+      <div className="widget-card widget-card--quiz widget-card--result">
+        <div className="widget-head">
+          <span className="widget-icon" aria-hidden>🎯</span>
+          <div className="widget-title">
+            <span className="widget-label">Quiz complete</span>
+            <span className="widget-sub">{praise(score, questions.length)}</span>
+          </div>
+          <span className="widget-counter" style={{ color: tone }}>
+            {score}<span style={{ color: "var(--ink-3)" }}>/{questions.length}</span>
+          </span>
         </div>
-        <p className="mt-1 text-sm" style={{ color: "var(--ink-2)" }}>{praise(score, questions.length)}</p>
-        <div className="mt-1 text-xs" style={{ color: "var(--ink-3)" }}>
-          {topicId ? "Score saved to your learner profile." : ""}
+        <div className="quiz-meter">
+          <div className="quiz-meter-bar" style={{ width: `${pct * 100}%`, background: tone }} />
         </div>
-        <button className="btn btn-ghost mt-4" onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); }}>
-          Try again
-        </button>
+        <div className="quiz-actions">
+          <button
+            className="btn btn-primary flex-1"
+            onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); }}
+          >
+            Try again
+          </button>
+        </div>
+        {topicId && <div className="quiz-meta">Score saved to your learner profile.</div>}
       </div>
     );
   }
 
   return (
-    <div className="card p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs font-medium" style={{ color: "var(--ink-2)" }}>Quiz</span>
-        <span className="text-xs tabular-nums" style={{ color: "var(--ink-3)" }}>
-          {idx + 1} / {questions.length}
-        </span>
+    <div className="widget-card widget-card--quiz">
+      <div className="widget-head">
+        <span className="widget-icon" aria-hidden>✅</span>
+        <div className="widget-title">
+          <span className="widget-label">Quiz</span>
+          <span className="widget-sub">multiple choice</span>
+        </div>
+        <span className="widget-counter">{idx + 1} / {questions.length}</span>
       </div>
-      <h3 className="text-base font-semibold leading-snug">{q.question}</h3>
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="quiz-question">{q.question}</div>
+      <div className="quiz-choices">
         {q.choices.map((c, ci) => {
           const isPicked = picked === String(ci);
           const isCorrect = String(ci) === String(q.answer);
           const reveal = picked !== null;
-          let border = "var(--border)";
-          let bg = "var(--surface-2)";
-          let color = "var(--ink)";
-          if (reveal && isCorrect) { border = "var(--success)"; bg = "oklch(0.30 0.10 155 / 0.4)"; color = "var(--ink)"; }
-          else if (reveal && isPicked && !isCorrect) { border = "var(--danger)"; bg = "var(--danger-soft)"; color = "var(--ink)"; }
-          else if (isPicked) { border = "var(--brand)"; bg = "oklch(0.30 0.10 148 / 0.35)"; }
+          let cls = "quiz-choice";
+          if (reveal && isCorrect) cls += " quiz-choice--correct";
+          else if (reveal && isPicked && !isCorrect) cls += " quiz-choice--wrong";
+          else if (isPicked) cls += " quiz-choice--picked";
           return (
             <button
               key={ci}
               onClick={() => pick(ci)}
               disabled={reveal}
-              className="rounded-lg px-4 py-3 text-left transition-colors"
-              style={{ background: bg, border: `1px solid ${border}`, color }}
+              className={cls}
             >
-              {c}
-              {reveal && isCorrect && <span className="float-right text-sm" style={{ color: "var(--success)" }}>✓</span>}
-              {reveal && isPicked && !isCorrect && <span className="float-right text-sm" style={{ color: "var(--danger)" }}>✕</span>}
+              <span className="quiz-choice-letter">
+                {String.fromCharCode(65 + ci)}
+              </span>
+              <span className="quiz-choice-text">{c}</span>
+              {reveal && isCorrect && <span className="quiz-choice-mark quiz-choice-mark--correct" aria-hidden>✓</span>}
+              {reveal && isPicked && !isCorrect && <span className="quiz-choice-mark quiz-choice-mark--wrong" aria-hidden>✕</span>}
             </button>
           );
         })}
       </div>
       {picked !== null && (
-        <div className="mt-4">
-          {q.explanation && <p className="text-sm" style={{ color: "var(--ink-2)" }}>{q.explanation}</p>}
-          <button className="btn btn-primary mt-3 w-full" onClick={next}>
-            {idx + 1 < questions.length ? "Next question" : "Finish quiz"}
+        <div className="quiz-explain">
+          {q.explanation && <p className="quiz-explanation">{q.explanation}</p>}
+          <button className="btn btn-primary widget-action-primary" onClick={next}>
+            {idx + 1 < questions.length ? "Next question →" : "Finish quiz"}
           </button>
         </div>
       )}

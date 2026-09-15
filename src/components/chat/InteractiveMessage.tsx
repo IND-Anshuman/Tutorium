@@ -29,9 +29,13 @@ export default function InteractiveMessage({ payload, onSayItBackRecord }: Props
     case "quiz":
       return <MiniQuiz questions={payload.questions} topicId={payload.topicId} />;
     case "info_cards":
-      return <InfoCards cards={payload.cards} />;
+      return <InfoCards items={payload.cards} topic={payload.topic} />;
     case "comparison_table":
-      return <ComparisonTable headers={payload.headers} rows={payload.rows} />;
+      return <ComparisonTable
+        headers={payload.headers || ["A", "B"]}
+        rows={payload.rows || []}
+        topic={payload.topic}
+      />;
     case "html_visual":
       return <HtmlVisual title={payload.title} html={payload.html} />;
     case "study_pack_actions":
@@ -43,7 +47,7 @@ export default function InteractiveMessage({ payload, onSayItBackRecord }: Props
     case "teach_back":
       return <TeachBackCard payload={payload} />;
     case "vocab_preview":
-      return <VocabPreview terms={payload.terms} />;
+      return <VocabPreview topic={payload.topic} terms={payload.terms} />;
     default:
       return null;
   }

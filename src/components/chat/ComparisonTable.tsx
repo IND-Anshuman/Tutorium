@@ -1,31 +1,35 @@
 "use client";
 
-export default function ComparisonTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+export default function ComparisonTable({
+  headers,
+  rows,
+  topic,
+}: {
+  headers: string[];
+  rows: string[][];
+  topic?: string;
+}) {
+  if (!rows?.length) return null;
   return (
-    <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr style={{ background: "var(--surface-2)" }}>
-              {headers.map((h) => (
-                <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--ink-2)" }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, ri) => (
-              <tr key={ri} style={{ borderTop: "1px solid var(--border)" }}>
-                {r.map((cell, ci) => (
-                  <td key={ci} className="px-4 py-2.5" style={{ color: ci === 0 ? "var(--ink)" : "var(--ink-2)" }}>
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="widget-card widget-card--compare">
+      <div className="widget-head">
+        <span className="widget-icon" aria-hidden>⚖️</span>
+        <div className="widget-title">
+          <span className="widget-label">Side by side</span>
+          {topic && <span className="widget-sub">{topic}</span>}
+        </div>
+        <span className="widget-counter">{rows.length}</span>
+      </div>
+      <div className="compare-row">
+        {headers.slice(0, 2).map((h, i) => (
+          <div key={i} className="compare-cell compare-cell--head">{h}</div>
+        ))}
+        {rows.map((row, ri) => (
+          <div key={ri} className="compare-pair">
+            <div className="compare-cell">{row[0]}</div>
+            <div className="compare-cell">{row[1]}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

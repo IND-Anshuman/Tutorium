@@ -11,44 +11,53 @@ export default function FlashcardDeck({ cards }: { cards: Flashcard[] }) {
   const last = idx === cards.length - 1;
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-medium" style={{ color: "var(--ink-2)" }}>
-          Flashcards
-        </span>
-        <span className="text-xs tabular-nums" style={{ color: "var(--ink-3)" }}>
-          {idx + 1} / {cards.length}
-        </span>
+    <div className="widget-card widget-card--flash">
+      <div className="widget-head">
+        <span className="widget-icon" aria-hidden>🃏</span>
+        <div className="widget-title">
+          <span className="widget-label">Flashcards</span>
+          <span className="widget-sub">{cards.length} cards</span>
+        </div>
+        <span className="widget-counter">{idx + 1} / {cards.length}</span>
       </div>
+
       <button
         onClick={() => setFlipped(!flipped)}
-        aria-label="Flip flashcard"
-        className="card block w-full transition-colors"
-        style={{
-          minHeight: 132,
-          padding: "var(--space-lg)",
-          borderRadius: "var(--radius-lg)",
-          transformStyle: "preserve-3d",
-        }}
+        aria-label={flipped ? "Show question" : "Reveal answer"}
+        className={`flashcard ${flipped ? "flashcard--flipped" : ""}`}
+        type="button"
       >
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--brand)" }}>
-          {flipped ? "Answer" : "Question"}
-        </div>
-        <div
-          className="text-base leading-normal"
-          style={{ color: flipped ? "var(--on-surface)" : "var(--ink)" }}
-        >
-          {flipped ? card.back : card.front}
-        </div>
-        <div className="mt-3 text-[11px]" style={{ color: "var(--ink-3)" }}>
-          tap to {flipped ? "see question" : "reveal answer"}
-        </div>
+        <span className={`flashcard-face flashcard-face--front ${flipped ? "flashcard-face--hidden" : ""}`}>
+          <span className="flashcard-tag">Question</span>
+          <span className="flashcard-text">{card.front}</span>
+        </span>
+        <span className={`flashcard-face flashcard-face--back ${!flipped ? "flashcard-face--hidden" : ""}`}>
+          <span className="flashcard-tag flashcard-tag--back">Answer</span>
+          <span className="flashcard-text">{card.back}</span>
+        </span>
+        <span className="flashcard-hint" aria-hidden>tap to flip</span>
       </button>
-      <div className="mt-3 flex gap-2">
-        <button className="btn btn-ghost flex-1" onClick={() => { setIdx((idx - 1 + cards.length) % cards.length); setFlipped(false); }} disabled={cards.length === 1}>
+
+      <div className="flashcard-progress" role="presentation">
+        {cards.map((_, i) => (
+          <span key={i} className={`flashcard-dot ${i === idx ? "flashcard-dot--active" : i < idx ? "flashcard-dot--done" : ""}`} />
+        ))}
+      </div>
+
+      <div className="widget-actions">
+        <button
+          className="btn btn-ghost flex-1"
+          onClick={() => { setIdx((idx - 1 + cards.length) % cards.length); setFlipped(false); }}
+          disabled={cards.length === 1}
+          aria-label="Previous card"
+        >
           ← Prev
         </button>
-        <button className="btn btn-primary flex-1" onClick={() => { setFlipped(false); setIdx((idx + 1) % cards.length); }}>
+        <button
+          className="btn btn-primary flex-1"
+          onClick={() => { setFlipped(false); setIdx((idx + 1) % cards.length); }}
+          aria-label={last ? "Start over" : "Next card"}
+        >
           {last && flipped ? "Review again" : "Next →"}
         </button>
       </div>

@@ -1,17 +1,32 @@
 "use client";
 
-export default function InfoCards({ cards }: { cards: Array<{ icon?: string; title: string; body: string }> }) {
+interface InfoCard {
+  icon?: string;
+  title: string;
+  body: string;
+}
+
+export default function InfoCards({ items, topic }: { items: InfoCard[]; topic?: string }) {
+  if (!items?.length) return null;
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {cards.map((c, i) => (
-        <div key={i} className="card p-4">
-          <div className="mb-1.5 text-sm font-semibold">
-            {c.icon && <span className="mr-1.5">{c.icon}</span>}
-            {c.title}
-          </div>
-          <p className="text-sm leading-normal" style={{ color: "var(--ink-2)" }}>{c.body}</p>
+    <div className="widget-card widget-card--info">
+      <div className="widget-head">
+        <span className="widget-icon" aria-hidden>💡</span>
+        <div className="widget-title">
+          <span className="widget-label">Key ideas</span>
+          {topic && <span className="widget-sub">{topic}</span>}
         </div>
-      ))}
+        <span className="widget-counter">{items.length}</span>
+      </div>
+      <div className="info-grid">
+        {items.map((it, i) => (
+          <div key={i} className="info-tile">
+            {it.icon && <div className="info-tile-icon" aria-hidden>{it.icon}</div>}
+            <div className="info-tile-label">{it.title}</div>
+            <div className="info-tile-value">{it.body}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
