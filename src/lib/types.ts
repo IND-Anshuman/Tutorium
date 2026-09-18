@@ -96,7 +96,9 @@ export type MaterialType =
   | "story"
   | "html_visual"
   | "teachback"
-  | "sayitback";
+  | "sayitback"
+  | "document"
+  | "theme";
 
 export interface Message {
   id: string;
@@ -120,6 +122,7 @@ export interface InteractiveFlashcards {
   topic: string;
   topicId: string;
   cards: Flashcard[];
+  theme?: TricksterTheme | null;
 }
 
 export interface InteractiveQuiz {
@@ -127,6 +130,7 @@ export interface InteractiveQuiz {
   topic: string;
   topicId: string;
   questions: QuizItem[];
+  theme?: TricksterTheme | null;
 }
 
 export interface InteractiveInfoCards {
@@ -157,6 +161,40 @@ export interface InteractiveStudyPackActions {
   topic: string;
   topicId: string;
   actions: Array<{ label: string; materialType: string }>;
+}
+
+export interface InteractiveDocument {
+  type: "document";
+  topic: string;
+  topicId: string;
+  docTitle: string;
+  pageCount: number;
+  summary: string;
+  keyTerms: string[];
+  sections: Array<{ title: string; summary: string }>;
+  difficulty: string;
+  prerequisites: string[];
+  plan: Array<{ day: number; focus: string; tasks: string[]; minutes: number; drill: string }>;
+}
+
+// Trickster data patch: validated in lib/trickster-schema.ts before use.
+export interface TricksterTheme {
+  vibe: string;
+  accent: string;
+  bg: string;
+  radius: number;
+  fontScale: number;
+  icon: string;
+  shuffleChoices: boolean;
+  hideCorrectUntilPick: boolean;
+  timePerQuestion: number;
+  hintsEnabled: boolean;
+  hintCount: number;
+  hiddenAnswerStyle: "veil" | "blur" | "scratch" | null;
+  streakMode: boolean;
+  easterEgg: string | null;
+  message: string;
+  confetti: boolean;
 }
 
 // ---- Speechmatics-flavored payloads ----
@@ -207,6 +245,7 @@ export type InteractivePayload =
   | InteractiveComparisonTable
   | InteractiveHtmlVisual
   | InteractiveStudyPackActions
+  | InteractiveDocument
   | InteractiveSayItBack
   | InteractiveHeatmap
   | InteractiveTeachBack

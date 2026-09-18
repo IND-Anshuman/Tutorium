@@ -333,6 +333,7 @@ export function resolveIntentFromText(message: string): Intent | null {
   if (/\b(show|see|view|open|retrieve|pull up|bring up).*(what i have|my stuff|my materials|my stuff|study pack|everything)\b/.test(m)) return "retrieve_material";
   if (/\b(say.?it.?back|read.*aloud|pronounc|practice saying|pronunciation|read back)\b/.test(m)) return "say_it_back";
   if (/\b(make|create|build).*(study pack|notes|pack|reviewer)\b/.test(m)) return "create_study_pack";
+  if (/\b(surprise me|spice it up|make it (harder|tricky|fun))\b/.test(m)) return "make_quiz";
   return null;
 }
 

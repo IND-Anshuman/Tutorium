@@ -1,21 +1,37 @@
 "use client";
 
 import { useState } from "react";
-import type { Flashcard } from "@/lib/types";
+import type { Flashcard, TricksterTheme } from "@/lib/types";
 
-export default function FlashcardDeck({ cards }: { cards: Flashcard[] }) {
+interface Props {
+  cards: Flashcard[];
+  theme?: TricksterTheme;
+}
+
+export default function FlashcardDeck({ cards, theme }: Props) {
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   if (!cards?.length) return null;
   const card = cards[idx];
   const last = idx === cards.length - 1;
 
+  const style = theme
+    ? ({
+        "--t-accent": theme.accent,
+        "--t-bg": theme.bg,
+        "--t-radius": `${theme.radius}px`,
+        "--t-icon": `"${theme.icon}"`,
+      } as React.CSSProperties)
+    : undefined;
+  const veil = theme?.hiddenAnswerStyle === "blur";
+  const scratch = theme?.hiddenAnswerStyle === "scratch";
+
   return (
-    <div className="widget-card widget-card--flash">
+    <div className="widget-card widget-card--flash" style={style}>
       <div className="widget-head">
-        <span className="widget-icon" aria-hidden>🃏</span>
+        <span className="widget-icon" aria-hidden>{theme?.icon || "🃏"}</span>
         <div className="widget-title">
-          <span className="widget-label">Flashcards</span>
+          <span className="widget-label">Flashcards{theme?.vibe ? ` · ${theme.vibe}` : ""}</span>
           <span className="widget-sub">{cards.length} cards</span>
         </div>
         <span className="widget-counter">{idx + 1} / {cards.length}</span>
@@ -24,7 +40,7 @@ export default function FlashcardDeck({ cards }: { cards: Flashcard[] }) {
       <button
         onClick={() => setFlipped(!flipped)}
         aria-label={flipped ? "Show question" : "Reveal answer"}
-        className={`flashcard ${flipped ? "flashcard--flipped" : ""}`}
+        className={`flashcard ${flipped ? "flashcard--flipped" : ""} ${veil ? "doc-veil" : ""}`}
         type="button"
       >
         <span className={`flashcard-face flashcard-face--front ${flipped ? "flashcard-face--hidden" : ""}`}>
@@ -32,10 +48,10 @@ export default function FlashcardDeck({ cards }: { cards: Flashcard[] }) {
           <span className="flashcard-text">{card.front}</span>
         </span>
         <span className={`flashcard-face flashcard-face--back ${!flipped ? "flashcard-face--hidden" : ""}`}>
-          <span className="flashcard-tag flashcard-tag--back">Answer</span>
-          <span className="flashcard-text">{card.back}</span>
+          <span className="flashcard-tag flashcard-tag--back">{scratch ? "Scratch to reveal" : "Answer"}</span>
+          <span className="flashcard-text">{veil && !flipped ? "••••••••" : card.back}</span>
         </span>
-        <span className="flashcard-hint" aria-hidden>tap to flip</span>
+        <span className="flashcard-hint" aria-hidden>{scratch ? "hold to scratch" : "tap to flip"}</span>
       </button>
 
       <div className="flashcard-progress" role="presentation">

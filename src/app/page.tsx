@@ -173,6 +173,35 @@ export default function Home() {
   );
 
   // ---------- main send ----------
+  // ---- document attach (PDF/TXT) ----
+  const [pendingDoc, setPendingDoc] = useState<{ text: string; filename: string; pages: number } | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingDocRef = useRef<{ text: string; filename: string; pages: number } | null>(null);
+  useEffect(() => { pendingDocRef.current = pendingDoc; }, [pendingDoc]);
+
+  const attachFile = async (file: File) => {
+    if (docBusy || sendState !== "idle") return;
+    setDocBusy(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/ingest", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "could not read that file");
+      setPendingDoc({ text: data.text, filename: data.filename, pages: data.pages });
+      setMessages((m) => [
+        ...m,
+        { id: uid(), role: "assistant", content: `Attached **${data.filename}** (${data.pages} pages, ${data.chars.toLocaleString()} chars). Ask me to summarize it, make a study plan, or quiz you on it.` },
+      ]);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
   const send = useCallback(
     async (text: string, meta?: { fromVoice?: boolean; wordCount?: number; avgConfidence?: number }) => {
       const message = text.trim();
@@ -195,7 +224,16 @@ export default function Home() {
         const res = await fetch("/api/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: USERID, message, topicId, sessionId, transcriptMeta: meta || null }),
+          body: JSON.stringify({
+          userId: USERID,
+          message,
+          topicId,
+          sessionId,
+          transcriptMeta: meta || null,
+          document: pendingDocRef.current
+            ? { text: pendingDocRef.current.text, filename: pendingDocRef.current.filename, pageCount: pendingDocRef.current.pages }
+            : null,
+        }),
           signal: abort.signal,
         });
         const data = await res.json();
@@ -249,6 +287,7 @@ export default function Home() {
           });
         } else {
           setSessionId((prev) => data.sessionId || prev);
+          if (pendingDocRef.current) setPendingDoc(null);
           if (data.sessionCtxPreview) setContextSummary(data.sessionCtxPreview);
           setMessages((m) => [
             ...m,
@@ -688,6 +727,27 @@ export default function Home() {
               </button>
             )}
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.txt,application/pdf,text/plain"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) attachFile(f);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy || docBusy}
+            aria-label="Attach a PDF or text document"
+            title="Attach a PDF or text document"
+            className="icon-btn"
+            style={{ background: pendingDoc ? "var(--lamp)" : "var(--surface)", color: pendingDoc ? "var(--on-lamp)" : "var(--ink-2)" }}
+          >
+            📎
+          </button>
           <button
             onMouseDown={startRecording}
             onTouchStart={startRecording}

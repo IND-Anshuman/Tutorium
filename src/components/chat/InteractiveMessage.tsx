@@ -16,6 +16,7 @@ import SayItBackCard from "./SayItBackCard";
 import Heatmap from "./Heatmap";
 import TeachBackCard from "./TeachBackCard";
 import VocabPreview from "./VocabPreview";
+import DocumentCard from "./DocumentCard";
 
 interface Props {
   payload: InteractivePayload;
@@ -25,9 +26,11 @@ interface Props {
 export default function InteractiveMessage({ payload, onSayItBackRecord }: Props) {
   switch (payload.type) {
     case "flashcards":
-      return <FlashcardDeck cards={payload.cards} />;
+      return <FlashcardDeck cards={payload.cards} theme={payload.theme ?? undefined} />;
     case "quiz":
-      return <MiniQuiz questions={payload.questions} topicId={payload.topicId} />;
+      return <MiniQuiz questions={payload.questions} topicId={payload.topicId} theme={payload.theme ?? undefined} />;
+    case "document":
+      return <DocumentCard payload={payload} />;
     case "info_cards":
       return <InfoCards items={payload.cards} topic={payload.topic} />;
     case "comparison_table":

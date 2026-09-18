@@ -41,6 +41,7 @@ interface AgentRequestBody {
   topicId?: string | null;
   sessionId?: string | null;
   transcriptMeta?: { fromVoice?: boolean; wordCount?: number; avgConfidence?: number } | null;
+  document?: { text: string; filename: string; pageCount?: number } | null;
   // background job control: "start" queues a study-pack job and returns immediately
   mode?: "sync" | "job" | "job_status";
   jobId?: string;
@@ -63,7 +64,9 @@ export async function POST(req: NextRequest) {
     }
 
     const message = (body.message || "").trim();
-    if (!message) return NextResponse.json({ error: "message required" }, { status: 400 });
+    if (!message && !body.document?.text) {
+      return NextResponse.json({ error: "message required" }, { status: 400 });
+    }
     if (message.length > MAX_MESSAGE_CHARS) {
       return NextResponse.json({ error: `message too long (max ${MAX_MESSAGE_CHARS} chars)` }, { status: 400 });
     }
@@ -191,6 +194,9 @@ export async function POST(req: NextRequest) {
       message,
       signal: abort.signal,
       sessionCtx: sessionId ? getSessionContext(sessionId) : null,
+      document: body.document?.text
+        ? { text: String(body.document.text).slice(0, 200_000), filename: (body.document.filename || "document").slice(0, 160), pageCount: body.document.pageCount }
+        : null,
     };
 
     const result = await orchestrateTurn(ctx);

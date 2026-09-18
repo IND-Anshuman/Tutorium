@@ -18,6 +18,9 @@ import {
 import { pickVocabTerms } from "./vocab";
 import { parseQuizCount } from "./quizgen";
 import { summarizeText, parseSummaryLength, messageCarriesText, extractBody } from "./summarizer";
+import { analyzeDocument, buildStudyPlan, parseDocIntent, type DocAnalysis } from "./docthink";
+import { designTricksterTheme, DEFAULT_THEME } from "./trickster";
+import type { TricksterTheme } from "./types";
 import { buildStudyPackActions, buildStudyPackConfirmation } from "./replies";
 import type { Classification, ChatMessage, InteractivePayload, Intent } from "./types";
 import type { SessionContext } from "./db";
@@ -41,6 +44,7 @@ export interface OrcCtx {
   message: string;
   signal?: AbortSignal;
   sessionCtx?: SessionContext | null;
+  document?: { text: string; filename: string; pageCount?: number } | null;
 }
 
 
@@ -61,6 +65,33 @@ function saveSummaryMaterials(
   });
 }
 
+
+// Trickster theme with per-topic material cache. "surprise me" bypasses the cache.
+async function getTricksterTheme(
+  ctx: OrcCtx, kind: "quiz" | "flashcards", difficulty?: string, count?: number
+): Promise<TricksterTheme | null> {
+  const surprise = /\b(surprise me|spice it up|make it (harder|tricky|fun))\b/i.test(ctx.message);
+  if (!surprise) {
+    const cached = ctx.getMaterial(ctx.topicId, "theme")?.content as TricksterTheme | undefined;
+    if (cached?.vibe) return cached;
+  }
+  const theme = await designTricksterTheme({
+    topic: ctx.topicTitle,
+    subject: ctx.subjectName,
+    difficulty,
+    quizCount: count,
+    kind,
+    sessionCtx: ctx.sessionCtx
+      ? { level: ctx.sessionCtx.level, weak_areas: ctx.sessionCtx.weak_areas }
+      : null,
+    signal: ctx.signal,
+  });
+  if (theme !== DEFAULT_THEME && theme.vibe) {
+    ctx.saveMaterial(ctx.topicId, "theme", `${ctx.topicTitle} — Trickster theme`, theme as unknown as Record<string, unknown>);
+  }
+  return surprise || theme !== DEFAULT_THEME ? theme : null;
+}
+
 // Getter for the scene brief (or fall back to stored notes / the raw message).
 function getBrief(ctx: OrcCtx): string {
   const b = ctx.getMaterial(ctx.topicId, "brief")?.content?.text as string | undefined;
@@ -74,6 +105,74 @@ function getBrief(ctx: OrcCtx): string {
 
 export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
   const { classification, topicId, topicTitle, subjectName, message } = ctx;
+
+// ---- document mode: attached/pasted document bypasses intent classification ----
+if (ctx.document?.text) {
+  try {
+    const analysis: DocAnalysis = await analyzeDocument({
+      text: ctx.document.text,
+      filename: ctx.document.filename,
+      pageCount: ctx.document.pageCount,
+      signal: ctx.signal,
+    });
+    const sub = parseDocIntent(ctx.message);
+    ctx.saveMaterial(topicId, "document", `${analysis.filename} — Analysis`, {
+      ...analysis,
+      text: ctx.document.text.slice(0, 100_000),
+    });
+    if (sub === "plan") {
+      const plan = await buildStudyPlan({ analysis, days: 5, signal: ctx.signal });
+      ctx.saveMaterial(topicId, "document", `${analysis.filename} — Study Plan`, { plan });
+      return {
+        reply: `Here's your ${plan.days.length}-day study plan for **${analysis.filename}**.`,
+        interactive: {
+          type: "document", topic: topicTitle, topicId,
+          docTitle: analysis.filename, pageCount: analysis.pageCount,
+          summary: analysis.summary, keyTerms: analysis.keyTerms,
+          sections: analysis.sections, difficulty: analysis.difficulty,
+          prerequisites: analysis.prerequisites, plan: plan.days,
+        },
+        intent: "teach_topic",
+      };
+    }
+    if (sub === "quiz") {
+      const questions = await createQuizOnly({
+        topic: topicTitle, brief: analysis.summary, quiz: { count: 10, difficulty: "mixed" },
+        sessionCtx: ctx.sessionCtx, signal: ctx.signal,
+      });
+      if (questions.length) {
+        ctx.saveMaterial(topicId, "quiz", `${topicTitle} — Quiz`, { questions });
+        return {
+          reply: `Quiz on **${analysis.filename}** — ${questions.length} questions.`,
+          interactive: { type: "quiz", topic: topicTitle, topicId, questions },
+          intent: "make_quiz",
+        };
+      }
+      return { reply: `I couldn't build a quiz from **${analysis.filename}** — try again.`, interactive: null, intent: "make_quiz" };
+    }
+    // summarize (default)
+    const summary = analysis.summary;
+    const keyTerms = analysis.keyTerms;
+    saveSummaryMaterials(ctx, topicId, topicTitle, summary, keyTerms);
+    return {
+      reply: summarizeReplyWithDrill(summary, keyTerms),
+      interactive: {
+        type: "document", topic: topicTitle, topicId,
+        docTitle: analysis.filename, pageCount: analysis.pageCount,
+        summary, keyTerms, sections: analysis.sections,
+        difficulty: analysis.difficulty, prerequisites: analysis.prerequisites,
+        plan: [],
+      },
+      intent: "make_summary",
+    };
+  } catch (e) {
+    return {
+      reply: `I couldn't analyze **${ctx.document.filename}** (${(e as Error).message}). Try again in a moment.`,
+      interactive: null,
+      intent: "make_summary",
+    };
+  }
+}
 
   switch (classification.intent) {
     case "create_study_pack": {
@@ -141,14 +240,17 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
       }
       const brief = getBrief(ctx);
       const cardReq = parseQuizCount(ctx.message);
-      const cards = await createFlashcardsOnly({ topic: topicTitle, brief, cardCount: cardReq.count, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
+      const [cards, theme] = await Promise.all([
+        createFlashcardsOnly({ topic: topicTitle, brief, cardCount: cardReq.count, sessionCtx: ctx.sessionCtx, signal: ctx.signal }),
+        getTricksterTheme(ctx, "flashcards", cardReq.difficulty, cardReq.count),
+      ]);
       if (!cards?.length) {
         return { reply: `I couldn't build flashcards for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_flashcards" };
       }
       ctx.saveMaterial(topicId, "flashcards", `${topicTitle} — Flashcards`, { cards });
       return {
-        reply: `Fresh flashcards for **${topicTitle}**.`,
-        interactive: { type: "flashcards", topic: topicTitle, topicId, cards },
+        reply: theme ? `Fresh flashcards for **${topicTitle}**. ${theme.icon} ${theme.vibe}`.trim() : `Fresh flashcards for **${topicTitle}**.`,
+        interactive: { type: "flashcards", topic: topicTitle, topicId, cards, theme },
         intent: "make_flashcards",
       };
     }
@@ -166,14 +268,17 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         };
       }
       const brief = getBrief(ctx);
-      const questions = await createQuizOnly({ topic: topicTitle, brief, quiz: req, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
+      const [questions, theme] = await Promise.all([
+        createQuizOnly({ topic: topicTitle, brief, quiz: req, sessionCtx: ctx.sessionCtx, signal: ctx.signal }),
+        getTricksterTheme(ctx, "quiz", req.difficulty, req.count),
+      ]);
       if (!questions?.length) {
         return { reply: `I couldn't build a quiz for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_quiz" };
       }
       ctx.saveMaterial(topicId, "quiz", `${topicTitle} — Quiz`, { questions });
       return {
-        reply: `Quiz time — ${topicTitle}.`,
-        interactive: { type: "quiz", topic: topicTitle, topicId, questions },
+        reply: theme ? `Quiz time — ${topicTitle}. ${theme.vibe ? `${theme.icon} ${theme.vibe}.` : ""}`.trim() : `Quiz time — ${topicTitle}.`,
+        interactive: { type: "quiz", topic: topicTitle, topicId, questions, theme },
         intent: "make_quiz",
       };
     }
