@@ -25,7 +25,7 @@ import { llmRuntimeLabel } from "@/lib/llm";
 import { orchestrateTurn, type OrcCtx } from "@/lib/orchestrate";
 import { startJobRunner } from "@/lib/jobrunner";
 import { scheduleCompaction } from "@/lib/context-compactor";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, Classification } from "@/lib/types";
 import db from "@/lib/db";
 
 // Start the background job worker when the server boots (guarded singleton).
@@ -119,11 +119,21 @@ export async function POST(req: NextRequest) {
     // classifier only needs to pick an INTENT. For obvious keyword requests we
     // skip the LLM entirely (instant, zero tokens, no model dependency); only
     // genuinely ambiguous messages reach the classifier (with empty history).
-    const fastIntent = topic ? resolveIntentFromText(message) : null;
-    let classification = fastIntent
-      ? { subject: subject.name, subcategory: "General", topic: topic.title, intent: fastIntent, confidence: 1 }
-      : await classifyMessage(message, topic ? [] : history, abort.signal, sessionId ? getSessionContext(sessionId) : null);
-
+    // Attached document: bypass classification entirely — the document branch
+    // in the orchestrator parses the sub-intent (plan / summarize / quiz).
+    let classification: Classification;
+    if (body.document?.text) {
+      classification = {
+        subject: subject?.name || "General", subcategory: "General",
+        topic: subject && topic ? topic.title : body.document.filename.replace(/\.[^.]+$/, "").slice(0, 80) || "Document",
+        intent: "make_summary" as const, confidence: 1,
+      };
+    } else {
+      const fastIntent = topic ? resolveIntentFromText(message) : null;
+      classification = fastIntent
+        ? { subject: subject.name, subcategory: "General", topic: topic.title, intent: fastIntent, confidence: 1 }
+        : await classifyMessage(message, topic ? [] : history, abort.signal, sessionId ? getSessionContext(sessionId) : null);
+    }
     if (subject && topic) {
       classification = { ...classification, subject: subject.name, topic: topic.title };
     }

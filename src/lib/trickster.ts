@@ -58,7 +58,13 @@ Be bold but FAIR: never make questions unreadable. No fences.`,
       temperature: 0.9,
       signal: args.signal,
     });
-    return validateThemePatch(data) ?? DEFAULT_THEME;
+    const clean = Object.fromEntries(
+      Object.entries(data as Record<string, unknown>).map(([k, v]) => [
+        k,
+        typeof v === "string" ? v.replace(/\s+/g, " ").trim() : v,
+      ])
+    );
+    return validateThemePatch(clean) ?? DEFAULT_THEME;
   } catch {
     return DEFAULT_THEME; // garnish, never a blocker
   }

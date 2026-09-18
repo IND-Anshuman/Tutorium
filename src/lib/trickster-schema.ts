@@ -3,7 +3,12 @@
 import { z } from "zod";
 
 const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "bad hex");
-const cssColor = z.string().max(40);
+// Free-form CSS color: gradients allowed (LLM loves them), but block url()/expression()
+// so a creative patch can't smuggle a remote load or JS into a style value.
+const cssColor = z
+  .string()
+  .max(160)
+  .refine((v) => !/url\s*\(|expression\s*\(|javascript:/i.test(v), "unsafe css");
 
 export const themePatchSchema = z.object({
   vibe: z.string().max(40).default(""),
