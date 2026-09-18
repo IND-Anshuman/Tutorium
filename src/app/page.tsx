@@ -6,6 +6,7 @@ import Markdown from "@/components/chat/Markdown";
 import Waveform from "@/components/ui/Waveform";
 import { EmptyState } from "@/components/ui/primitives";
 import SessionsRail from "@/components/sessions/SessionsRail";
+import ExploreMore from "@/components/chat/ExploreMore";
 import MessageBubble from "@/components/chat/MessageBubble";
 import TranscriptBadge from "@/components/chat/TranscriptBadge";
 import type { InteractivePayload } from "@/lib/types";
@@ -674,6 +675,13 @@ export default function Home() {
               ))}
             </div>
           )}
+          {messages.some((m) => m.role === "assistant") && (
+            <ExploreMore
+              busy={sendState !== "idle"}
+              onPick={(message) => { void send(message); }}
+            />
+          )}
+
 
           {busy && (
             <div className="mt-4 flex items-center gap-2 text-sm" style={{ color: "var(--ink-2)" }}>

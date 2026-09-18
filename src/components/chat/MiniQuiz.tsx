@@ -169,7 +169,7 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
         <span className="widget-icon" aria-hidden>{theme?.icon || "✅"}</span>
         <div className="widget-title">
           <span className="widget-label">Quiz{theme?.vibe ? ` · ${theme.vibe}` : ""}</span>
-          <span className="widget-sub">multiple choice</span>
+          <span className="widget-sub">pick an answer — I'll explain it</span>
         </div>
         {theme?.streakMode && streak >= 2 && <span className="quiz-streak" role="status">🔥 {streak}</span>}
         <span className="widget-counter">{idx + 1} / {questions.length}</span>

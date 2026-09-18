@@ -129,6 +129,21 @@ export default function TopicPage({ params }: { params: { id: string } }) {
           </div>
         )}
 
+        {/* First-time guide: what to do on this page */}
+        {materials.length > 0 && (
+          <div className="topic-guide">
+            <span className="topic-guide-title">How to use this topic</span>
+            <div className="topic-guide-steps">
+              <span className="topic-guide-step"><b>1.</b> Read the notes or summary</span>
+              <span className="topic-guide-step"><b>2.</b> Flip flashcards</span>
+              <span className="topic-guide-step"><b>3.</b> Take the quiz — 4 to 30 questions</span>
+              <span className="topic-guide-step"><b>4.</b> Read it aloud, get scored</span>
+              <span className="topic-guide-step"><b>5.</b> Check your review queue</span>
+            </div>
+            <span className="topic-guide-hint">Your scores and missed terms are remembered — the Review queue and radar update as you practice.</span>
+          </div>
+        )}
+
         {/* Quiz history strip */}
         {scores.length > 0 && (
           <div className="topic-quiz-history">

@@ -38,8 +38,8 @@ export default function WeaknessRadar({ data }: { data: RadarData }) {
       <div className="widget-head">
         <span className="widget-icon" aria-hidden>🕸️</span>
         <div className="widget-title">
-          <span className="widget-label">Weakness radar</span>
-          <span className="widget-sub">where the next session should aim</span>
+          <span className="widget-label">Your strengths</span>
+          <span className="widget-sub">green = solid, short side = practice next</span>
         </div>
         <span className="widget-counter" style={{ color: tone }}>{score(data)}</span>
       </div>

@@ -8,12 +8,29 @@ const ICONS: Record<string, string> = {
   quiz: "✅",
   flashcards: "🃏",
   html_visual: "🖼️",
-  say_it_back: "🎙",
-  teach_back: "📝",
+  sayitback: "🎙",
+  teachback: "📝",
   clean_notes: "📋",
   reviewer: "🔍",
   summary: "📑",
   story: "📖",
+  document: "📄",
+  theme: "🎨",
+};
+
+// Human names for material types (chips say "Quiz", not "make_quiz").
+const NAMES: Record<string, string> = {
+  quiz: "Quiz",
+  flashcards: "Flashcards",
+  html_visual: "Visual",
+  sayitback: "Say-it-back",
+  teachback: "Teach-back",
+  clean_notes: "Notes",
+  reviewer: "Reviewer",
+  summary: "Summary",
+  story: "Story",
+  document: "Document",
+  theme: "Theme",
 };
 
 export default function LibraryPage() {
@@ -53,9 +70,9 @@ export default function LibraryPage() {
                     <span className="lib-session-dot" aria-hidden />
                     <span className="lib-session-domain">{s.domain || "Untitled domain"}</span>
                     <span className="lib-session-meta">
-                      {s.message_count} {s.message_count === 1 ? "message" : "messages"}
+                      {(s.topic_count || 0)} {(s.topic_count || 0) === 1 ? "topic" : "topics"}
                       <span className="lib-session-dot-sep" aria-hidden>·</span>
-                      {new Date(s.last_active_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      {new Date(s.updated_at || s.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                     </span>
                     <span className="lib-session-arrow" aria-hidden>→</span>
                   </Link>
@@ -111,7 +128,7 @@ export default function LibraryPage() {
                             {t.materials.slice(0, 6).map((m: any) => (
                               <span key={m.id} className="lib-material-chip">
                                 <span aria-hidden>{ICONS[m.type] || "📘"}</span>
-                                {m.type.replace(/_/g, " ")}
+                                {NAMES[m.type] || m.type.replace(/_/g, " ")}
                               </span>
                             ))}
                             {n > 6 && <span className="lib-material-chip lib-material-chip--more">+{n - 6}</span>}

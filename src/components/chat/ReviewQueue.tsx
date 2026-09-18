@@ -22,8 +22,8 @@ export default function ReviewQueue({ payload }: { payload: InteractiveReviewQue
       <div className="widget-head">
         <span className="widget-icon" aria-hidden>🔁</span>
         <div className="widget-title">
-          <span className="widget-label">Review queue</span>
-          <span className="widget-sub">the tutor remembers what you forgot</span>
+          <span className="widget-label">What to redo</span>
+          <span className="widget-sub">built from your last scores and drills</span>
         </div>
         <span className="widget-counter">{items.length}</span>
       </div>

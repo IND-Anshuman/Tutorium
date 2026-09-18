@@ -188,7 +188,7 @@ export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
           </button>
         </div>
       )}
-      <div className="voicequiz-controls">
+      <div className="voicequiz-controls" role="status" aria-live="polite">
         <button
           className="btn btn-lamp flex-1"
           onClick={voice === "listening" ? stopListening : startListening}
@@ -197,6 +197,9 @@ export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
         >
           {voice === "listening" ? "⏹ Stop — checking…" : voice === "thinking" ? "🧠 Listening…" : "🎙 Answer with your voice"}
         </button>
+        <span className="voicequiz-hint">
+          {voice === "listening" ? "Say the answer, or a letter like “B”." : "Say the answer out loud, or a letter — “A”, “B”…"}
+        </span>
       </div>
     </div>
   );

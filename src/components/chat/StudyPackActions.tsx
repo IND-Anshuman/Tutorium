@@ -3,6 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+// One-line plain-language hint per tile — the accessibility layer for users who
+// don't know what "say_it_back" means.
+const HINTS: Record<string, string> = {
+  quiz: "Multiple choice, scored instantly",
+  voice_quiz: "Answer with your voice",
+  flashcards: "Flip cards to reveal answers",
+  html_visual: "A diagram of the topic",
+  say_it_back: "Read aloud — I score your terms",
+  review_queue: "What you missed, queued up",
+  make_mnemonic: "Memory hooks that stick",
+  debate_topic: "Two tutors argue it out",
+  teach_back: "Explain it back to me",
+};
+
 const ICONS: Record<string, string> = {
   quiz: "✅",
   flashcards: "🃏",
@@ -79,6 +93,7 @@ export default function StudyPackActions({
             >
               <span className="action-tile-icon" aria-hidden>{icon}</span>
               <span className="action-tile-label">{isBusy ? "Loading…" : a.label}</span>
+              {!isBusy && <span className="action-tile-hint">{HINTS[a.materialType] || "Tap to open"}</span>}
             </button>
           );
         })}

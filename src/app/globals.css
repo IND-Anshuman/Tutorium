@@ -1303,3 +1303,34 @@ button:not(:disabled):active {
 .radar-hints { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .radar-hint { font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: color-mix(in oklab, #ef4444 10%, var(--surface-2)); color: var(--ink-2); }
 .export-pack { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- explore-more tray (discoverability for new users) ---- */
+.explore-more { margin: 4px auto; max-width: 640px; }
+.explore-more-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; border: 1px dashed var(--border); background: transparent; color: var(--ink-2); font-size: 0.82rem; cursor: pointer; transition: border-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out); }
+.explore-more-toggle:hover { border-color: var(--brand); color: var(--ink); }
+.explore-more-tray { padding: 12px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--card); }
+.explore-more-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.explore-more-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.explore-more-close { border: 0; background: transparent; color: var(--ink-3); cursor: pointer; font-size: 0.9rem; padding: 2px 6px; }
+.explore-more-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.explore-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; text-align: left; transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
+.explore-chip:hover:not(:disabled) { border-color: var(--brand); transform: translateY(-1px); }
+.explore-chip:disabled { opacity: 0.5; cursor: default; }
+.explore-chip-icon { font-size: 1.1rem; }
+.explore-chip-label { font-size: 0.84rem; font-weight: 700; color: var(--ink); }
+.explore-chip-hint { font-size: 0.72rem; color: var(--ink-3); }
+.explore-more-note { margin: 10px 0 0; font-size: 0.74rem; color: var(--ink-3); font-style: italic; }
+
+/* ---- topic guide ---- */
+.topic-guide { margin: 0 0 14px; padding: 12px 14px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--card); }
+.topic-guide-title { display: block; font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin-bottom: 6px; }
+.topic-guide-steps { display: flex; flex-wrap: wrap; gap: 6px; }
+.topic-guide-step { font-size: 0.8rem; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
+.topic-guide-step b { color: var(--brand); margin-right: 4px; }
+.topic-guide-hint { display: block; margin-top: 8px; font-size: 0.74rem; color: var(--ink-3); font-style: italic; }
+
+.voicequiz-hint { font-size: 0.74rem; color: var(--ink-3); font-style: italic; align-self: center; }
+
+.sayitback-how { margin: 0; font-size: 0.8rem; line-height: 1.5; color: var(--ink-3); }
+
+.action-tile-hint { font-size: 0.68rem; color: var(--ink-3); line-height: 1.3; }
