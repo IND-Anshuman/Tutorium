@@ -33,7 +33,7 @@ startJobRunner();
 
 export const maxDuration = 120;
 
-const MAX_MESSAGE_CHARS = 20_000;
+const MAX_MESSAGE_CHARS = 200_000;
 
 interface AgentRequestBody {
   userId: string;

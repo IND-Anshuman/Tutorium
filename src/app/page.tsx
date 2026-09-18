@@ -61,9 +61,11 @@ async function pollJob(jobId: string, signal: AbortSignal, onDone: (job: any) =>
       body: JSON.stringify({ userId: USERID, mode: "job_status", jobId }),
       signal,
     });
+    if (!res.ok) throw new Error(`Lost track of the job (status ${res.status}).`);
     const data = await res.json();
     const job = data.job;
-    if (job?.status === "done" || job?.status === "failed") {
+    if (!job) throw new Error("Lost track of the job.");
+    if (job.status === "done" || job.status === "failed") {
       onDone(job);
       return;
     }
@@ -213,29 +215,34 @@ export default function Home() {
             if (gen !== genRef.current || abort.signal.aborted) return;
             setTopicId(data.topicId);
             setTopicTitle(data.topicTitle);
-            const interactive =
-              (job.result?.interactive as InteractivePayload | null) ||
-              (data.intent === "make_visual"
-                ? ({ type: "vocab_preview", topic: data.topicTitle, topicId: data.topicId, terms: [] } as InteractivePayload)
-                : ({
-                    type: "study_pack_actions",
-                    topic: data.topicTitle,
-                    topicId: data.topicId,
-                    actions: [
-                      { label: "Take the quiz", materialType: "quiz" },
-                      { label: "Show flashcards", materialType: "flashcards" },
-                      { label: "Practice saying it back", materialType: "say_it_back" },
-                    ],
-                  } as InteractivePayload));
+            if (job.status === "failed") {
+              // Honest failure: surface the server's own message instead of
+              // announcing a ready study pack (audit F4).
+              setMessages((m) => [
+                ...m,
+                {
+                  id: uid(),
+                  role: "assistant",
+                  content:
+                    (job.result?.reply as string | undefined) ||
+                    `I hit a snag building **${data.topicTitle}** — ask me again in a moment and I'll rebuild it.`,
+                },
+              ]);
+              return;
+            }
+            // Done: prefer the server's actual reply/checklist over a canned one.
+            const serverReply = job.result?.reply as string | undefined;
+            const interactive = (job.result?.interactive as InteractivePayload | null) ?? null;
             setMessages((m) => [
               ...m,
               {
                 id: uid(),
                 role: "assistant",
                 content:
-                  data.intent === "make_visual"
+                  serverReply ||
+                  (data.intent === "make_visual"
                     ? `Here's the visual guide for **${data.topicTitle}**.`
-                    : `Your **${data.topicTitle}** study pack is ready — clean notes, reviewer, flashcards, quiz, summary, and a Say-It-Back passage. What next?`,
+                    : `Your **${data.topicTitle}** study pack is ready. What next?`),
                 interactive,
               },
             ]);
@@ -255,7 +262,7 @@ export default function Home() {
         if (gen === genRef.current) setSendState("idle");
       }
     },
-    [sendState, topicId]
+    [sendState, topicId, sessionId]
   );
 
   const cancel = useCallback(() => {
@@ -623,6 +630,7 @@ export default function Home() {
                   contextSummary={contextSummary}
                   onCopy={copyMessage}
                   onRegenerate={m.role === "user" ? () => regenerate(m) : undefined}
+                  onSayItBackRecord={onSayItBackRecord}
                 />
               ))}
             </div>

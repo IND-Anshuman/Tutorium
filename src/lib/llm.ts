@@ -136,7 +136,10 @@ async function callOnce(
     if (!content) throw new EmptyResponseError();
     return content;
   } catch (e: any) {
-    if (e?.name === "AbortError") throw new AbortedError();
+    if (e?.name === "AbortError") {
+      if (signal?.aborted) throw new AbortedError();
+      throw new LlmError(`LLM request timed out after ${timeoutMs}ms`);
+    }
     throw e;
   }
 }

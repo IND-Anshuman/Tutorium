@@ -65,7 +65,7 @@ export async function compactSessionContext(
   }>({
     system: `You compact a tutor's running session context. Merge the new exchange into the existing one. Output JSON {"summary","level","new_terms","new_weak","new_notes"}. summary<=140 words. level ∈ {unknown,beginner,intermediate,advanced}.`,
     user: `Previous summary:\n${prev.summary || "(none yet)"}\n\nRecent exchange:\n${recent || "(empty)"}\n\nReturn merged context.`,
-    maxTokens: 400,
+    maxTokens: 800,
   });
 
   const merged = mergeIntoContext(prev, data);

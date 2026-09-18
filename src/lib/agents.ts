@@ -46,7 +46,7 @@ Notes/messy dump -> create_study_pack. Material request -> make_*. "show me what
       .slice(-3) // intent rarely needs 6 turns; keep context tight
       .map((m) => `${m.role}: ${m.content.slice(0, 120)}`)
       .join("\n")}${history.length ? "\n\n" : ""}Student message: """${message.slice(0, 1200)}"""`,
-    maxTokens: 250,
+    maxTokens: 700,
   });
   return {
     subject: data.subject || "General",
@@ -69,9 +69,9 @@ export async function generateSceneBrief(args: {
   const { data } = await llmJsonSig<{ brief: string; key_terms: string[] }>(args.signal, {
     system: domainContextPrefix(args.sessionCtx) + `Summarize the source into a tight study-passage for a tutor.
 Return JSON: {"brief": <=120 words covering only the core concepts a tutor needs, "key_terms": [4-8 domain terms]}. No markdown.`,
-    user: `Topic: ${args.topic} (${args.subject})\nSource:\n"""${args.sourceText.slice(0, 4000)}"""`,
-    maxTokens: 320,
+    user: `Topic: ${args.topic} (${args.subject})\nSource:\n"""${args.sourceText}"""`,
     temperature: 0.2,
+    maxTokens: 900,
   });
   return { brief: data.brief || "", keyTerms: (data.key_terms || []).map(String).slice(0, 8) };
 }
@@ -85,7 +85,7 @@ async function packCore(args: { topic: string; subject: string; brief: string; s
     system: domainContextPrefix(args.sessionCtx) + `Write a study pack core for the topic. Return JSON {"clean_notes": markdown, "reviewer": concise bullet recap, "summary": 3-4 sentences}.
 Accurate, grade-appropriate, no filler.`,
     user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""`,
-    maxTokens: 1100,
+    maxTokens: 2000,
   });
   return { clean_notes: data.clean_notes || "", reviewer: data.reviewer || "", summary: data.summary || "" };
 }
@@ -95,7 +95,7 @@ async function packAssess(args: { topic: string; brief: string; sessionCtx?: Ses
     system: domainContextPrefix(args.sessionCtx) + `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (6), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation"}] (4)}.
 answer MUST be the index string of the correct choice.`,
     user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
-    maxTokens: 900,
+    maxTokens: 4500,
   });
   return {
     flashcards: (data.flashcards || []).map((f) => ({ front: f.front, back: f.back })),
@@ -112,7 +112,7 @@ async function packStory(args: { topic: string; brief: string; sessionCtx?: Sess
   const { data } = await llmJsonSig<{ story: string }>(args.signal, {
     system: domainContextPrefix(args.sessionCtx) + `Write a short memorable story/analogy teaching the topic's core idea. Return JSON {"story": 6-10 sentences}. Plain text, no markdown.`,
     user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
-    maxTokens: 400,
+    maxTokens: 900,
   });
   return data.story || "";
 }
@@ -183,7 +183,7 @@ Recent conversation:
 ${args.history.slice(-3).map((m) => `${m.role}: ${m.content.slice(0, 140)}`).join("\n") || "(none)"}
 
 Student: """${args.question.slice(0, 1200)}"""`,
-    maxTokens: 900,
+    maxTokens: 1600,
   });
   return { reply: data.reply || "", keyTerms: (data.key_terms || []).map(String).slice(0, 8) };
 }
@@ -201,7 +201,7 @@ Empty string = no change. Only fill fields with a real signal.`,
     user: `Profile: style=${args.profile.learning_style}; strengths=${args.profile.strengths.join(", ") || "none"}; weaknesses=${args.profile.weaknesses.join(", ") || "none"}
 Student: """${args.message.slice(0, 500)}"""
 Tutor: """${args.reply.slice(0, 500)}"""`,
-    maxTokens: 300,
+    maxTokens: 600,
   });
   return {
     learning_style_update: data.learning_style_update || "",
@@ -244,8 +244,8 @@ export async function generateVisual(args: {
     system: domainContextPrefix(args.sessionCtx) + `Design a self-contained HTML visual for a lesson. Only: h1/h2, p, ul/li, table, one <style>, optional inline <svg>. NO scripts, NO <html>/<body>, NO iframes. <60 lines.
 Return JSON {"title","html"}.`,
     user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""`,
-    maxTokens: 1200,
     temperature: 0.2,
+    maxTokens: 2400,
   });
   const html = (data.html || "").replace(/<script[\s\S]*?<\/script>/gi, "").slice(0, 8000);
   return { html, title: data.title || `${args.topic} — Visual Guide` };
@@ -263,7 +263,7 @@ export async function gradeTeachBack(args: {
     system: domainContextPrefix(args.sessionCtx) + `A student explained the topic (Feynman). Grade against the brief. Return JSON {"verdict": 1-2 sentences, "missed": [2-4 short points], "next_step": one action}.`,
     user: `Topic: ${args.topic}\nGround truth:\n"""${args.brief}"""\n\nStudent:
 """${args.transcript.slice(0, 2500)}"""`,
-    maxTokens: 500,
+    maxTokens: 900,
   });
   return {
     verdict: data.verdict || "",

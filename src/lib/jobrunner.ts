@@ -1,6 +1,6 @@
 // Background job runner (single-process demo): polls the jobs table and runs
 // pending study-pack generation so /api/agent's heavy path never blocks the UI.
-import { getJob, setJobStatus, getMaterial, saveMaterial } from "./db";
+import { getJob, setJobStatus, getMaterial, saveMaterial, saveMessage, asInteractive } from "./db";
 import { orchestrateTurn, type OrcCtx } from "./orchestrate";
 
 const POLL_MS = 1500;
@@ -43,6 +43,7 @@ async function runJob(jobId: string) {
     message: string;
     topicTitle: string;
     subjectName: string;
+    sessionId?: string | null;
     classification: any;
   };
 
@@ -61,7 +62,23 @@ async function runJob(jobId: string) {
     // an AbortController per job so the route's Cancel can interrupt in-flight jobs.
   };
 
-  const result = await orchestrateTurn(ctx);
+  let result;
+  try {
+    result = await orchestrateTurn(ctx);
+  } catch (e) {
+    // Backstop: even a hard failure must leave an honest, persisted message so
+    // the user's chat reflects reality after reload (audit F3/F4).
+    const reply = `I hit a snag building **${payload.topicTitle}** — ask me again in a moment and I'll rebuild it.`;
+    saveMessage(payload.topicId, "assistant", reply, null, null, { sessionId: payload.sessionId ?? null });
+    setJobStatus(jobId, "failed", { error: (e as Error).message, reply });
+    return;
+  }
+
+  // Persist the completion as a real assistant message so reloads, session
+  // switches, and library views stay consistent with the chat (audit F3).
+  saveMessage(payload.topicId, "assistant", result.reply, asInteractive(result.interactive), null, {
+    sessionId: payload.sessionId ?? null,
+  });
 
   setJobStatus(jobId, "done", {
     topicId: payload.topicId,

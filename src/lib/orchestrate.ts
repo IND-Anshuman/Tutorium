@@ -58,13 +58,25 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
   switch (classification.intent) {
     case "create_study_pack": {
       // 1) build + persist one scene brief (compacted context reused by all later agents)
-      const brief = await generateSceneBrief({
-        topic: topicTitle,
-        subject: subjectName,
-        sourceText: message,
-        sessionCtx: ctx.sessionCtx,
-        signal: ctx.signal,
-      });
+      let brief: Awaited<ReturnType<typeof generateSceneBrief>>;
+      try {
+        brief = await generateSceneBrief({
+          topic: topicTitle,
+          subject: subjectName,
+          sourceText: message,
+          sessionCtx: ctx.sessionCtx,
+          signal: ctx.signal,
+        });
+      } catch {
+        // Brief generation is the pack's foundation; without it every section
+        // would fail too. Return an honest retry reply instead of throwing so
+        // both the sync route and the background job persist a real message.
+        return {
+          reply: `I couldn't build a study pack for **${topicTitle}** this time — that's usually a temporary model hiccup. Ask me again in a moment and I'll rebuild it.`,
+          interactive: null,
+          intent: "create_study_pack",
+        };
+      }
       ctx.saveMaterial(topicId, "brief", `${topicTitle} — Brief`, {
         text: brief.brief,
         keyTerms: brief.keyTerms,
@@ -92,7 +104,7 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
       });
 
       return {
-        reply: buildStudyPackConfirmation(topicTitle, topicId),
+        reply: buildStudyPackConfirmation(topicTitle, pack),
         interactive: buildStudyPackActions(topicTitle, topicId),
         intent: "create_study_pack",
       };
