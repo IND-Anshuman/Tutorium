@@ -17,6 +17,7 @@ import {
 } from "./agents";
 import { pickVocabTerms } from "./vocab";
 import { parseQuizCount } from "./quizgen";
+import { summarizeText, parseSummaryLength, messageCarriesText, extractBody } from "./summarizer";
 import { buildStudyPackActions, buildStudyPackConfirmation } from "./replies";
 import type { Classification, ChatMessage, InteractivePayload, Intent } from "./types";
 import type { SessionContext } from "./db";
@@ -40,6 +41,24 @@ export interface OrcCtx {
   message: string;
   signal?: AbortSignal;
   sessionCtx?: SessionContext | null;
+}
+
+
+// After a fresh summary exists, auto-wire the pronounce-to-remember drill: the
+// summary becomes the Say-It-Back passage with vocabulary hot-swap terms, and
+// the reply offers the drill. Garnish, never a blocker.
+function summarizeReplyWithDrill(summary: string, keyTerms: string[]): string {
+  return `${summary}\n\nWant it to stick? Say **"say it back"** and read it aloud — I'll score every key term.`;
+}
+
+function saveSummaryMaterials(
+  ctx: OrcCtx, topicId: string, topicTitle: string, summary: string, keyTerms: string[]
+) {
+  ctx.saveMaterial(topicId, "summary", `${topicTitle} — Summary`, { text: summary });
+  ctx.saveMaterial(topicId, "sayitback", `${topicTitle} — Say-It-Back passage`, {
+    passage: summary,
+    keyTerms,
+  });
 }
 
 // Getter for the scene brief (or fall back to stored notes / the raw message).
@@ -160,9 +179,35 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
     }
 
     case "make_summary": {
+      // Fresh text in this message -> summarize it now (quick|standard|deep).
+      if (messageCarriesText(ctx.message)) {
+        try {
+          const length = parseSummaryLength(ctx.message);
+          const { summary, keyTerms } = await summarizeText({
+            text: extractBody(ctx.message),
+            length,
+            subject: subjectName,
+            signal: ctx.signal,
+          });
+          if (summary) {
+            saveSummaryMaterials(ctx, topicId, topicTitle, summary, keyTerms);
+            return { reply: summarizeReplyWithDrill(summary, keyTerms), interactive: null, intent: "make_summary" };
+          }
+        } catch (e) {
+          // Honest failure: coach instead of pretending.
+          return {
+            reply: `I couldn't summarize that just now (${(e as Error).message}). Paste the text again and I'll retry.`,
+            interactive: null,
+            intent: "make_summary",
+          };
+        }
+      }
       const m = ctx.getMaterial(topicId, "summary");
+      if (m?.content?.text) {
+        return { reply: summarizeReplyWithDrill(String(m.content.text), []), interactive: null, intent: "make_summary" };
+      }
       return {
-        reply: m?.content?.text || `No summary yet — send your notes and I'll build a study pack for **${topicTitle}**.`,
+        reply: `No summary yet — paste the text (or say "make a study pack") and I'll summarize **${topicTitle}**.`,
         interactive: null,
         intent: "make_summary",
       };
