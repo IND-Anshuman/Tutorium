@@ -16,6 +16,7 @@ import {
   generateSceneBrief,
 } from "./agents";
 import { pickVocabTerms } from "./vocab";
+import { parseQuizCount } from "./quizgen";
 import { buildStudyPackActions, buildStudyPackConfirmation } from "./replies";
 import type { Classification, ChatMessage, InteractivePayload, Intent } from "./types";
 import type { SessionContext } from "./db";
@@ -120,7 +121,8 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
         };
       }
       const brief = getBrief(ctx);
-      const cards = await createFlashcardsOnly({ topic: topicTitle, brief, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
+      const cardReq = parseQuizCount(ctx.message);
+      const cards = await createFlashcardsOnly({ topic: topicTitle, brief, cardCount: cardReq.count, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
       if (!cards?.length) {
         return { reply: `I couldn't build flashcards for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_flashcards" };
       }
@@ -133,16 +135,19 @@ export async function orchestrateTurn(ctx: OrcCtx): Promise<OrchestrateResult> {
     }
 
     case "make_quiz": {
+      const req = parseQuizCount(ctx.message);
       const m = ctx.getMaterial(topicId, "quiz");
-      if (m?.content?.questions?.length) {
+      const stored: any[] = m?.content?.questions || [];
+      // Replay the stored quiz only when it satisfies the requested size.
+      if (stored.length >= req.count && req.difficulty === "medium") {
         return {
-          reply: `Quiz time — ${topicTitle}.`,
-          interactive: { type: "quiz", topic: topicTitle, topicId, questions: m.content.questions },
+          reply: `Quiz time — ${topicTitle}. ${stored.length} questions.`,
+          interactive: { type: "quiz", topic: topicTitle, topicId, questions: stored.slice(0, req.count) },
           intent: "make_quiz",
         };
       }
       const brief = getBrief(ctx);
-      const questions = await createQuizOnly({ topic: topicTitle, brief, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
+      const questions = await createQuizOnly({ topic: topicTitle, brief, quiz: req, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
       if (!questions?.length) {
         return { reply: `I couldn't build a quiz for **${topicTitle}** yet — add more notes first.`, interactive: null, intent: "make_quiz" };
       }

@@ -11,6 +11,8 @@
 import { llmJson } from "./llm";
 import type { Classification, StudyPack, Flashcard, QuizItem, MemoryUpdate, ChatMessage, Intent } from "./types";
 import type { SessionContext } from "./db";
+import { parseQuizCount, planQuizBands, dedupeByStem } from "./quizgen";
+import type { QuizRequest } from "./quizgen";
 
 // Thin wrapper so every agent call shares the same AbortSignal plumbing.
 function llmJsonSig<T>(signal: AbortSignal | undefined, args: Parameters<typeof llmJson<T>>[0]) {
@@ -90,12 +92,23 @@ Accurate, grade-appropriate, no filler.`,
   return { clean_notes: data.clean_notes || "", reviewer: data.reviewer || "", summary: data.summary || "" };
 }
 
-async function packAssess(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
+async function assessBand(args: {
+  topic: string; brief: string; quizCount: number; cardCount: number; difficulty: string;
+  priorStems: string[]; sessionCtx?: SessionContext | null; signal?: AbortSignal;
+}): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
+  const difficultyLine =
+    args.difficulty === "hard" ? "Make questions genuinely hard: require application, not recall."
+    : args.difficulty === "easy" ? "Keep questions foundational and confidence-building."
+    : args.difficulty === "mixed" ? "Vary difficulty: a third easy, a third medium, a third genuinely tricky."
+    : "Aim for medium difficulty overall.";
+  const prior = args.priorStems.length
+    ? `\nDo NOT repeat or reword these existing questions:\n${args.priorStems.slice(-24).map((s) => `- ${s}`).join("\n")}`
+    : "";
   const { data } = await llmJsonSig<{ flashcards: Flashcard[]; quiz: QuizItem[] }>(args.signal, {
-    system: domainContextPrefix(args.sessionCtx) + `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (6), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation"}] (4)}.
-answer MUST be the index string of the correct choice.`,
+    system: domainContextPrefix(args.sessionCtx) + `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (${args.cardCount}), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation"}] (${args.quizCount})}.
+answer MUST be the index string of the correct choice. Exactly ${args.quizCount} quiz items and ${args.cardCount} flashcards.${prior}`,
     user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
-    maxTokens: 4500,
+    maxTokens: Math.min(6000, 450 + args.quizCount * 150 + args.cardCount * 90),
   });
   return {
     flashcards: (data.flashcards || []).map((f) => ({ front: f.front, back: f.back })),
@@ -106,6 +119,34 @@ answer MUST be the index string of the correct choice.`,
       explanation: q.explanation || "",
     })),
   };
+}
+
+// Band-generate a large assessment: bands of 8 quiz items per call, each band
+// told about prior stems to avoid repeats. Single call when counts are small.
+export async function packAssess(args: {
+  topic: string; brief: string; quiz?: QuizRequest; cardCount?: number;
+  sessionCtx?: SessionContext | null; signal?: AbortSignal;
+}): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
+  const quizCount = Math.max(4, Math.min(30, args.quiz?.count ?? 4));
+  const cardCount = Math.max(4, Math.min(24, args.cardCount ?? 6));
+  const bands = planQuizBands(quizCount);
+  const allCards: Flashcard[] = [];
+  const allQuiz: QuizItem[] = [];
+  let stems: string[] = [];
+  for (let i = 0; i < bands.length; i++) {
+    const band = bands[i];
+    const cardsThisBand = i === 0 ? cardCount : Math.max(0, cardCount - allCards.length);
+    const r = await assessBand({
+      topic: args.topic, brief: args.brief, quizCount: band, cardCount: cardsThisBand,
+      difficulty: args.quiz?.difficulty ?? "medium", priorStems: stems,
+      sessionCtx: args.sessionCtx, signal: args.signal,
+    });
+    allCards.push(...r.flashcards);
+    allQuiz.push(...r.quiz);
+    stems = allQuiz.map((q) => q.question);
+    if (allCards.length >= cardCount && allQuiz.length >= quizCount) break;
+  }
+  return { flashcards: dedupeByStem(allCards.map((c) => ({ ...c, question: c.front }))).map(({ front, back }) => ({ front, back })), quiz: dedupeByStem(allQuiz).slice(0, quizCount) };
 }
 
 async function packStory(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<string> {
@@ -152,13 +193,13 @@ export async function createStudyPack(args: {
 }
 
 // For on-demand requests (just flashcards / just quiz) when no pack exists yet.
-export async function createFlashcardsOnly(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<Flashcard[]> {
-  const { flashcards } = await packAssess({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal });
+export async function createFlashcardsOnly(args: { topic: string; brief: string; cardCount?: number; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<Flashcard[]> {
+  const { flashcards } = await packAssess({ topic: args.topic, brief: args.brief, cardCount: args.cardCount ?? 6, sessionCtx: args.sessionCtx, signal: args.signal });
   return flashcards;
 }
 
-export async function createQuizOnly(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<QuizItem[]> {
-  const { quiz } = await packAssess({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal });
+export async function createQuizOnly(args: { topic: string; brief: string; quiz?: QuizRequest; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<QuizItem[]> {
+  const { quiz } = await packAssess({ topic: args.topic, brief: args.brief, quiz: args.quiz ?? { count: 4, difficulty: "medium" }, sessionCtx: args.sessionCtx, signal: args.signal });
   return quiz;
 }
 
