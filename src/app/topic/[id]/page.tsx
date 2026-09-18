@@ -7,6 +7,9 @@ import TeachBackCard from "@/components/chat/TeachBackCard";
 import Markdown from "@/components/chat/Markdown";
 import type { InteractiveSayItBack, InteractiveTeachBack } from "@/lib/types";
 import Link from "next/link";
+import ExportPack from "@/components/chat/ExportPack";
+import WeaknessRadar from "@/components/chat/WeaknessRadar";
+import { getOrCreateProfile } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,18 @@ export default function TopicPage({ params }: { params: { id: string } }) {
   const materials = listMaterials(topic.id);
   const byType = new Map(materials.map((m) => [m.type, m]));
   const scores = quizHistory(topic.id);
+  const profile = getOrCreateProfile("demo-user");
+  const sayitbackMat = byType.get("sayitback")?.content;
+  const quizLatest = scores.length ? (scores as Array<{ score: number; total: number }>)[scores.length - 1] : null;
+  const radarData = {
+    quizAccuracy: quizLatest && quizLatest.total ? quizLatest.score / quizLatest.total : 0,
+    speechClarity: sayitbackMat?.lastOverall != null ? Number(sayitbackMat.lastOverall) / 100 : 0,
+    vocabStrength: sayitbackMat?.keyTerms?.length
+      ? Math.max(0, 1 - ((sayitbackMat.missedTerms as string[])?.length || 0) / (sayitbackMat.keyTerms as string[]).length)
+      : 0,
+    consistency: Math.min(1, scores.length / 5),
+    weakAreas: Math.max(0, 1 - (profile.weaknesses?.length || 0) / 6),
+  };
 
   const flashcards = byType.get("flashcards")?.content?.cards || null;
   const quiz = byType.get("quiz")?.content?.questions || null;
@@ -193,6 +208,14 @@ export default function TopicPage({ params }: { params: { id: string } }) {
             <MiniQuiz questions={quiz} topicId={topic.id} />
           </section>
         )}
+        <section className="topic-section">
+          <h2 className="topic-section-title"><span aria-hidden>🕸️</span> Your radar</h2>
+          <WeaknessRadar data={radarData} />
+        </section>
+        <section className="topic-section">
+          <h2 className="topic-section-title"><span aria-hidden>📤</span> Take it with you</h2>
+          <ExportPack topicTitle={topic.title} materials={materials} />
+        </section>
         {visual?.html && (
           <section id="sec-html_visual" className="topic-section">
             <h2 className="topic-section-title"><span aria-hidden>🖼️</span> Visual guide</h2>

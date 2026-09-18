@@ -17,6 +17,10 @@ import Heatmap from "./Heatmap";
 import TeachBackCard from "./TeachBackCard";
 import VocabPreview from "./VocabPreview";
 import DocumentCard from "./DocumentCard";
+import ReviewQueue from "./ReviewQueue";
+import DebateCard from "./DebateCard";
+import MnemonicCard from "./MnemonicCard";
+import VoiceQuiz from "./VoiceQuiz";
 
 interface Props {
   payload: InteractivePayload;
@@ -31,6 +35,14 @@ export default function InteractiveMessage({ payload, onSayItBackRecord }: Props
       return <MiniQuiz questions={payload.questions} topicId={payload.topicId} theme={payload.theme ?? undefined} />;
     case "document":
       return <DocumentCard payload={payload} />;
+    case "review_queue":
+      return <ReviewQueue payload={payload} />;
+    case "debate":
+      return <DebateCard payload={payload} />;
+    case "mnemonic":
+      return <MnemonicCard payload={payload} />;
+    case "voice_quiz":
+      return <VoiceQuiz questions={payload.questions} topicId={payload.topicId} />;
     case "info_cards":
       return <InfoCards items={payload.cards} topic={payload.topic} />;
     case "comparison_table":

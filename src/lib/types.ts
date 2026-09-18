@@ -10,6 +10,7 @@ export interface QuizItem {
   choices: string[];
   answer: string; // index as string "0".."3" (LLM-proof)
   explanation: string;
+  trap?: string; // the common wrong turn behind the distractor ("why you fell for it")
 }
 
 export interface StudyPack {
@@ -39,6 +40,10 @@ export type Intent =
   | "make_visual"
   | "retrieve_material"
   | "say_it_back"
+  | "review_queue"
+  | "debate_topic"
+  | "make_mnemonic"
+  | "voice_quiz"
   | "unknown";
 
 export interface MemoryUpdate {
@@ -163,6 +168,38 @@ export interface InteractiveStudyPackActions {
   actions: Array<{ label: string; materialType: string }>;
 }
 
+export interface InteractiveReviewQueue {
+  type: "review_queue";
+  topic: string;
+  topicId: string;
+  items: Array<{ kind: "term" | "weak_area" | "quiz"; label: string; detail: string; drill: string }>;
+  lastScore: { score: number; total: number } | null;
+  quizAttempts: number;
+}
+
+export interface InteractiveDebate {
+  type: "debate";
+  topic: string;
+  topicId: string;
+  rounds: Array<{ skeptic: string; enthusiast: string }>;
+  verdict: string;
+}
+
+export interface InteractiveMnemonic {
+  type: "mnemonic";
+  topic: string;
+  topicId: string;
+  items: Array<{ kind: "acronym" | "phrase" | "peg"; body: string; covers: string[] }>;
+}
+
+export interface InteractiveVoiceQuiz {
+  type: "voice_quiz";
+  topic: string;
+  topicId: string;
+  questions: QuizItem[];
+  theme?: TricksterTheme | null;
+}
+
 export interface InteractiveDocument {
   type: "document";
   topic: string;
@@ -246,6 +283,10 @@ export type InteractivePayload =
   | InteractiveHtmlVisual
   | InteractiveStudyPackActions
   | InteractiveDocument
+  | InteractiveReviewQueue
+  | InteractiveDebate
+  | InteractiveMnemonic
+  | InteractiveVoiceQuiz
   | InteractiveSayItBack
   | InteractiveHeatmap
   | InteractiveTeachBack

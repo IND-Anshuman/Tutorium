@@ -9,6 +9,10 @@ export function buildStudyPackActions(topic: string, topicId: string): Interacti
     topicId,
     actions: [
       { label: "Make quiz", materialType: "quiz" },
+      { label: "Voice quiz", materialType: "voice_quiz" },
+      { label: "Review queue", materialType: "review_queue" },
+      { label: "Mnemonics", materialType: "make_mnemonic" },
+      { label: "Debate it", materialType: "debate_topic" },
       { label: "Make flashcards", materialType: "flashcards" },
       { label: "Make a visual", materialType: "html_visual" },
       { label: "Practice saying it back", materialType: "say_it_back" },

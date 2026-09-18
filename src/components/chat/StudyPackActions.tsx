@@ -8,6 +8,10 @@ const ICONS: Record<string, string> = {
   flashcards: "🃏",
   html_visual: "🖼️",
   say_it_back: "🎙",
+  voice_quiz: "🎤",
+  review_queue: "🔁",
+  make_mnemonic: "🧠",
+  debate_topic: "⚔️",
   teach_back: "📝",
   notes: "📋",
   reviewer: "🔍",
@@ -32,9 +36,13 @@ export default function StudyPackActions({
     try {
       const msg =
         materialType === "quiz" ? "quiz me"
+          : materialType === "voice_quiz" ? "voice quiz me"
           : materialType === "flashcards" ? "show my flashcards"
           : materialType === "html_visual" ? "make a visual"
           : materialType === "say_it_back" ? "I want to practice saying it back"
+          : materialType === "review_queue" ? "show my review queue"
+          : materialType === "make_mnemonic" ? "give me a mnemonic"
+          : materialType === "debate_topic" ? "debate this topic"
           : label.toLowerCase();
       await fetch("/api/agent", {
         method: "POST",

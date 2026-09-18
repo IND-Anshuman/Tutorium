@@ -1255,3 +1255,51 @@ button:not(:disabled):active {
   .quiz-confetti { animation: none; }
   .quiz-timer-bar { transition: none; }
 }
+
+/* ---- review queue ---- */
+.review-meta { font-size: 0.82rem; color: var(--ink-3); }
+.review-items { display: flex; flex-direction: column; gap: 6px; }
+.review-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--surface-2); }
+.review-item--term { border-left: 3px solid #f59e0b; }
+.review-item--weak_area { border-left: 3px solid #ef4444; }
+.review-item--quiz { border-left: 3px solid var(--brand); }
+.review-item-icon { font-size: 1rem; }
+.review-item-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.review-item-label { font-weight: 600; font-size: 0.86rem; color: var(--ink); }
+.review-item-detail { font-size: 0.76rem; color: var(--ink-3); }
+.review-item-drill { font-size: 0.74rem; font-weight: 600; color: var(--brand); white-space: nowrap; }
+
+/* ---- debate ---- */
+.debate-round { display: flex; flex-direction: column; gap: 10px; }
+.debate-voice { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-md); }
+.debate-voice--skeptic { background: color-mix(in oklab, #ef4444 9%, var(--surface-2)); border-left: 3px solid #ef4444; }
+.debate-voice--enthusiast { background: color-mix(in oklab, #22c55e 9%, var(--surface-2)); border-left: 3px solid #22c55e; }
+.debate-avatar { font-size: 1.1rem; }
+.debate-name { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); }
+.debate-text { margin: 0; font-size: 0.88rem; line-height: 1.5; color: var(--ink); }
+.debate-verdict { padding: 10px 12px; border-radius: var(--radius-md); background: color-mix(in oklab, var(--brand) 10%, transparent); font-size: 0.86rem; color: var(--ink); display: flex; flex-direction: column; gap: 4px; }
+.debate-verdict-title { font-weight: 700; font-size: 0.78rem; color: var(--ink-3); }
+.debate-dots { display: flex; gap: 4px; justify-content: center; }
+
+/* ---- mnemonic ---- */
+.mnemonic-items { display: flex; flex-direction: column; gap: 8px; }
+.mnemonic-item { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; }
+.mnemonic-item--picked { border-color: var(--brand); background: color-mix(in oklab, var(--brand) 8%, var(--surface-2)); }
+.mnemonic-head { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; font-weight: 700; color: var(--ink-3); }
+.mnemonic-kind { text-transform: uppercase; letter-spacing: 0.05em; }
+.mnemonic-chose { margin-left: auto; color: var(--brand); }
+.mnemonic-body { font-size: 0.9rem; line-height: 1.5; color: var(--ink); }
+.mnemonic-covers { font-size: 0.74rem; color: var(--ink-3); font-style: italic; }
+
+/* ---- voice quiz + trap ---- */
+.voicequiz-controls { display: flex; gap: 8px; margin-top: 8px; }
+.voicequiz-error { font-size: 0.8rem; color: var(--danger); padding: 6px 0; }
+.voicequiz-transcript { font-size: 0.78rem; color: var(--ink-3); font-style: italic; padding: 4px 0; }
+.voicequiz-say { margin-left: 8px; display: inline-flex; }
+.quiz-trap { margin: 0 0 6px; font-size: 0.82rem; color: #f59e0b; font-weight: 600; }
+
+/* ---- weakness radar + export ---- */
+.radar-svg { width: 200px; max-width: 100%; margin: 4px auto; display: block; }
+.radar-hints { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.radar-hint { font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: color-mix(in oklab, #ef4444 10%, var(--surface-2)); color: var(--ink-2); }
+.export-pack { display: flex; gap: 8px; flex-wrap: wrap; }

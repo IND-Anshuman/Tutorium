@@ -13,6 +13,7 @@ import type { Classification, StudyPack, Flashcard, QuizItem, MemoryUpdate, Chat
 import type { SessionContext } from "./db";
 import { parseQuizCount, planQuizBands, dedupeByStem } from "./quizgen";
 import type { QuizRequest } from "./quizgen";
+import { resolveNewIntentFromText } from "./enrich";
 
 // Thin wrapper so every agent call shares the same AbortSignal plumbing.
 function llmJsonSig<T>(signal: AbortSignal | undefined, args: Parameters<typeof llmJson<T>>[0]) {
@@ -42,8 +43,8 @@ export async function classifyMessage(
 ): Promise<Classification> {
   const { data } = await llmJsonSig<Classification>(signal, {
     system: domainContextPrefix(sessionCtx) + `Classify the student message. Return JSON {"subject","subcategory","topic","intent","confidence"}.
-intent ∈ {create_study_pack, teach_topic, make_flashcards, make_quiz, make_summary, make_story, make_visual, retrieve_material, say_it_back, unknown}.
-Notes/messy dump -> create_study_pack. Material request -> make_*. "show me what I have" -> retrieve_material. Subject="General" if unclear. Topic: 2-5 words.`,
+intent ∈ {create_study_pack, teach_topic, make_flashcards, make_quiz, make_summary, make_story, make_visual, retrieve_material, say_it_back, review_queue, debate_topic, make_mnemonic, unknown}.
+Notes/messy dump -> create_study_pack. Material request -> make_*. "show me what I have" -> retrieve_material. "what should I redo/review" -> review_queue. "debate X" -> debate_topic. "mnemonic" -> make_mnemonic. Subject="General" if unclear. Topic: 2-5 words.`,
     user: `${history
       .slice(-3) // intent rarely needs 6 turns; keep context tight
       .map((m) => `${m.role}: ${m.content.slice(0, 120)}`)
@@ -105,8 +106,9 @@ async function assessBand(args: {
     ? `\nDo NOT repeat or reword these existing questions:\n${args.priorStems.slice(-24).map((s) => `- ${s}`).join("\n")}`
     : "";
   const { data } = await llmJsonSig<{ flashcards: Flashcard[]; quiz: QuizItem[] }>(args.signal, {
-    system: domainContextPrefix(args.sessionCtx) + `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (${args.cardCount}), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation"}] (${args.quizCount})}.
-answer MUST be the index string of the correct choice. Exactly ${args.quizCount} quiz items and ${args.cardCount} flashcards.${prior}`,
+    system: domainContextPrefix(args.sessionCtx) + `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (${args.cardCount}), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation", "trap"}] (${args.quizCount})}.
+answer MUST be the index string of the correct choice. Exactly ${args.quizCount} quiz items and ${args.cardCount} flashcards.
+"trap" (1 sentence) names the common misconception that makes the WRONG choice tempting — shown only when the learner picks wrong. e.g. "Tempting — but that confuses the light reactions with the Calvin cycle."${prior}`,
     user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
     maxTokens: Math.min(6000, 450 + args.quizCount * 150 + args.cardCount * 90),
   });
@@ -117,6 +119,7 @@ answer MUST be the index string of the correct choice. Exactly ${args.quizCount}
       choices: Array.isArray(q.choices) ? q.choices.map(String) : [],
       answer: String(q.answer),
       explanation: q.explanation || "",
+      trap: q.trap || "",
     })),
   };
 }
@@ -204,6 +207,14 @@ export async function createQuizOnly(args: { topic: string; brief: string; quiz?
 }
 
 // ---------- teaching ----------
+// Level dial: "explain it simpler / like I'm five / expert mode" re-teaches at
+// an explicit level instead of the profile default.
+export function parseLevelOverride(message: string): "beginner" | "advanced" | null {
+  const m = (message || "").toLowerCase();
+  if (/\b(explain it (like|as if)[^,.;]*?(five|5)|super simple|dumb it down|simpler|simpler terms|beginner|high school|middle school|easier)\b/.test(m)) return "beginner";
+  if (/\b(expert|advanced|technical|deep dive|rigorous|graduate|go deeper)\b/.test(m)) return "advanced";
+  return null;
+}
 export async function teachTopic(args: {
   topic: string;
   subject: string;
@@ -214,8 +225,14 @@ export async function teachTopic(args: {
   sessionCtx?: SessionContext | null;
   signal?: AbortSignal;
 }): Promise<{ reply: string; keyTerms: string[] }> {
+  const levelOverride = parseLevelOverride(args.question);
+  const levelLine = levelOverride === "beginner"
+    ? "\nThe student asked for SIMPLE: no jargon without instantly defining it, everyday analogies, shorter sentences."
+    : levelOverride === "advanced"
+      ? "\nThe student asked for DEPTH: precise terminology, mechanism-level detail, don't dumb anything down."
+      : "";
   const { data } = await llmJsonSig<{ reply: string; key_terms: string[] }>(args.signal, {
-    system: domainContextPrefix(args.sessionCtx) + `You are Tutorium, a warm voice-first tutor. The student is listening, not reading: core idea first, short spoken paragraphs, one analogy, invite a follow-up. Address weaknesses if given.
+    system: domainContextPrefix(args.sessionCtx) + `You are Tutorium, a warm voice-first tutor. The student is listening, not reading: core idea first, short spoken paragraphs, one analogy, invite a follow-up. Address weaknesses if given.${levelLine}
 Return JSON {"reply": markdown ~150-220 words, "key_terms": [4-8 terms you used]}.`,
     user: `Topic: ${args.topic} (${args.subject})
 Learning style: ${args.profile?.learning_style || "unknown"}; weaknesses: ${(args.profile?.weaknesses || []).join(", ") || "none"}; strengths: ${(args.profile?.strengths || []).join(", ") || "none"}
@@ -325,6 +342,7 @@ const WORTHY_PATTERN =
 export function resolveIntentFromText(message: string): Intent | null {
   const m = (message || "").toLowerCase().trim();
   if (!m) return null;
+  if (/\b(voice quiz|rapid.?fire|hands.?free quiz|speak.*quiz|quiz.*aloud)\b/.test(m)) return "voice_quiz";
   if (/\b(quiz( me)?|test me|question me|take the quiz)\b/.test(m)) return "make_quiz";
   if (/\b(flashcards?|flash cards|cards)\b/.test(m) && /\b(make|show|see|create|build|give|review|practice)\b/.test(m)) return "make_flashcards";
   if (/\b(summar(ize|y)|recap|overview|main points|key points)\b/.test(m)) return "make_summary";
@@ -334,7 +352,7 @@ export function resolveIntentFromText(message: string): Intent | null {
   if (/\b(say.?it.?back|read.*aloud|pronounc|practice saying|pronunciation|read back)\b/.test(m)) return "say_it_back";
   if (/\b(make|create|build).*(study pack|notes|pack|reviewer)\b/.test(m)) return "create_study_pack";
   if (/\b(surprise me|spice it up|make it (harder|tricky|fun))\b/.test(m)) return "make_quiz";
-  return null;
+  return resolveNewIntentFromText(message);
 }
 
 // Guardrails so flaky model output can't interrupt normal use. Forces teach_topic
@@ -343,6 +361,7 @@ const QUESTION_RE =
   /\b(what|whats|what's|how|why|when|where|who|which|can you|could you|explain|define|describe|tell me|difference between|mean|meaning of|is it|does this|how does|how do|what does|what is)\b/i;
 const MATERIAL_INTENTS = new Set<Intent>([
   "create_study_pack", "make_flashcards", "make_quiz", "make_summary", "make_story", "make_visual", "retrieve_material",
+  "review_queue", "debate_topic", "make_mnemonic", "voice_quiz",
 ]);
 
 export function isTeachQuestion(message: string, intent: Intent): boolean {

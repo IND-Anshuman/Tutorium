@@ -152,6 +152,31 @@ export function saveQuizScore(userId: string, topicId: string, score: number, to
   ).run(uid(), userId, topicId, score, total, nowIso());
 }
 
+// Aggregated review data for one topic: weakest quiz areas (from wrong answers'
+// history), latest say-it-back missed terms, and learner weak areas.
+export function getReviewData(userId: string, topicId: string) {
+  const scores = db
+    .prepare(`SELECT score, total, created_at FROM quiz_scores WHERE topic_id = ? ORDER BY created_at ASC`)
+    .all(topicId) as Array<{ score: number; total: number; created_at: string }>;
+  const sib = db
+    .prepare(
+      `SELECT content FROM materials WHERE topic_id = ? AND type = 'sayitback'
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(topicId) as { content: string } | undefined;
+  let missedTerms: string[] = [];
+  if (sib?.content) {
+    try {
+      missedTerms = (JSON.parse(sib.content).missedTerms || []).slice(0, 8);
+    } catch { /* malformed material — ignore */ }
+  }
+  return {
+    quizAttempts: scores.length,
+    lastScore: scores.length ? scores[scores.length - 1] : null,
+    missedTerms,
+  };
+}
+
 export function quizHistory(topicId: string) {
   return db
     .prepare(`SELECT score, total, created_at FROM quiz_scores WHERE topic_id = ? ORDER BY created_at ASC`)

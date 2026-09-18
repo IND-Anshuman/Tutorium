@@ -214,6 +214,7 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
       )}
       {picked !== null && (
         <div className="quiz-explain">
+          {q.trap && picked !== String(q.answer) && <p className="quiz-trap">🪤 {q.trap}</p>}
           {q.explanation && <p className="quiz-explanation">{q.explanation}</p>}
           <button className="btn btn-primary widget-action-primary" onClick={next}>
             {idx + 1 < questions.length ? "Next question →" : "Finish quiz"}

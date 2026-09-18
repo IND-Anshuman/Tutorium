@@ -20,6 +20,8 @@ import { parseQuizCount } from "./quizgen";
 import { summarizeText, parseSummaryLength, messageCarriesText, extractBody } from "./summarizer";
 import { analyzeDocument, buildStudyPlan, parseDocIntent, type DocAnalysis } from "./docthink";
 import { designTricksterTheme, DEFAULT_THEME } from "./trickster";
+import { generateDebate, generateMnemonic, buildReviewItems } from "./enrich";
+import { getReviewData } from "./db";
 import type { TricksterTheme } from "./types";
 import { buildStudyPackActions, buildStudyPackConfirmation } from "./replies";
 import type { Classification, ChatMessage, InteractivePayload, Intent } from "./types";
@@ -45,6 +47,7 @@ export interface OrcCtx {
   signal?: AbortSignal;
   sessionCtx?: SessionContext | null;
   document?: { text: string; filename: string; pageCount?: number } | null;
+  getReviewData?: (userId: string, topicId: string) => ReturnType<typeof getReviewData>;
 }
 
 
@@ -283,6 +286,26 @@ if (ctx.document?.text) {
       };
     }
 
+    case "voice_quiz": {
+      const req = parseQuizCount(ctx.message);
+      const m = ctx.getMaterial(topicId, "quiz");
+      const stored: any[] = m?.content?.questions || [];
+      const [questions, theme] = await Promise.all([
+        stored.length >= req.count
+          ? Promise.resolve(stored.slice(0, req.count))
+          : createQuizOnly({ topic: topicTitle, brief: getBrief(ctx), quiz: req, sessionCtx: ctx.sessionCtx, signal: ctx.signal }),
+        getTricksterTheme(ctx, "quiz", req.difficulty, req.count),
+      ]);
+      if (!questions?.length) {
+        return { reply: `I need notes before a voice quiz — say "make a study pack" first.`, interactive: null, intent: "voice_quiz" };
+      }
+      return {
+        reply: `Rapid-fire voice quiz on **${topicTitle}** — ${questions.length} questions, hands free.`,
+        interactive: { type: "voice_quiz", topic: topicTitle, topicId, questions, theme },
+        intent: "voice_quiz",
+      };
+    }
+
     case "make_summary": {
       // Fresh text in this message -> summarize it now (quick|standard|deep).
       if (messageCarriesText(ctx.message)) {
@@ -351,6 +374,67 @@ if (ctx.document?.text) {
         interactive: null,
         intent: "make_visual",
       };
+    }
+
+    case "review_queue": {
+      const review = (ctx.getReviewData || getReviewData)(ctx.userId, topicId);
+      const weakAreas = ctx.sessionCtx?.weak_areas || [];
+      const items = buildReviewItems({
+        missedTerms: review.missedTerms,
+        weakAreas,
+        lastScore: review.lastScore,
+        quizAttempts: review.quizAttempts,
+      });
+      if (!items.length) {
+        return {
+          reply: `Nothing queued for **${topicTitle}** — you're clean. Run a quiz and I'll start tracking what to redo.`,
+          interactive: null,
+          intent: "review_queue",
+        };
+      }
+      return {
+        reply: `Your redo list for **${topicTitle}** — ${items.length} item${items.length > 1 ? "s" : ""}. The tutor remembers what you forgot.`,
+        interactive: {
+          type: "review_queue", topic: topicTitle, topicId, items,
+          lastScore: review.lastScore ? { score: review.lastScore.score, total: review.lastScore.total } : null,
+          quizAttempts: review.quizAttempts,
+        },
+        intent: "review_queue",
+      };
+    }
+
+    case "debate_topic": {
+      const brief = getBrief(ctx);
+      try {
+        const debate = await generateDebate({ topic: topicTitle, subject: subjectName, brief, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
+        if (debate.rounds.length) {
+          return {
+            reply: `Two tutors, three rounds, zero mercy — debating **${topicTitle}**.`,
+            interactive: { type: "debate", topic: topicTitle, topicId, rounds: debate.rounds, verdict: debate.verdict },
+            intent: "debate_topic",
+          };
+        }
+      } catch (e) {
+        return { reply: `The debate went quiet (${(e as Error).message}) — ask again in a moment.`, interactive: null, intent: "debate_topic" };
+      }
+      return { reply: `I couldn't stage the debate just now — try again.`, interactive: null, intent: "debate_topic" };
+    }
+
+    case "make_mnemonic": {
+      const brief = getBrief(ctx);
+      try {
+        const items = await generateMnemonic({ topic: topicTitle, subject: subjectName, brief, sessionCtx: ctx.sessionCtx, signal: ctx.signal });
+        if (items.length) {
+          return {
+            reply: `Mnemonics forged for **${topicTitle}** — pick the one that sticks.`,
+            interactive: { type: "mnemonic", topic: topicTitle, topicId, items },
+            intent: "make_mnemonic",
+          };
+        }
+      } catch (e) {
+        return { reply: `The forge went cold (${(e as Error).message}) — ask again in a moment.`, interactive: null, intent: "make_mnemonic" };
+      }
+      return { reply: `I couldn't forge a mnemonic just now — try again.`, interactive: null, intent: "make_mnemonic" };
     }
 
     case "say_it_back": {
