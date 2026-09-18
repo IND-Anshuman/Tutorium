@@ -82,6 +82,6 @@ export function fallbackTheme(kind: "quiz" | "flashcards"): TricksterTheme {
     streakMode: true,
     confetti: true,
     accent: "var(--brand)",
-    bg: "var(--card)",
+    bg: "var(--surface)",
   };
 }

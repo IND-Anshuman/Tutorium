@@ -110,10 +110,12 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
     }
   };
 
+  // Trickster paints personality, not the surface: background/borders/text stay on the
+  // app's dark palette (light LLM-picked backgrounds made cards unreadable + mismatched),
+  // while accent, radius, icon and vibe carry the character.
   const style = theme
     ? ({
         "--t-accent": theme.accent,
-        "--t-bg": theme.bg,
         "--t-radius": `${theme.radius}px`,
         "--t-font-scale": String(theme.fontScale),
         "--t-icon": `"${theme.icon}"`,

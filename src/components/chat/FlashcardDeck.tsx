@@ -15,10 +15,10 @@ export default function FlashcardDeck({ cards, theme }: Props) {
   const card = cards[idx];
   const last = idx === cards.length - 1;
 
+  // Same rule as MiniQuiz: accent/radius/icon only — never the card background.
   const style = theme
     ? ({
         "--t-accent": theme.accent,
-        "--t-bg": theme.bg,
         "--t-radius": `${theme.radius}px`,
         "--t-icon": `"${theme.icon}"`,
       } as React.CSSProperties)
