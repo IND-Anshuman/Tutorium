@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireUserId } from "@/lib/identity";
 import { listLibrary } from "@/lib/db";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const userId = url.searchParams.get("userId") || "demo-user";
+  const userId = await requireUserId();
   return NextResponse.json({ library: listLibrary(userId) });
 }

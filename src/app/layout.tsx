@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider, SignInButton, SignUpButton, UserButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,8 +9,23 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen">{children}</body>
-    </html>
+    <ClerkProvider afterSignOutUrl="/">
+      <body className="min-h-screen">
+        <div className="clerk-controls" role="region" aria-label="Account">
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button className="btn btn-ghost clerk-btn">Sign in</button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <button className="btn btn-primary clerk-btn">Create account</button>
+            </SignUpButton>
+          </SignedOut>
+          <SignedIn>
+            <UserButton />
+          </SignedIn>
+        </div>
+        {children}
+      </body>
+    </ClerkProvider>
   );
 }

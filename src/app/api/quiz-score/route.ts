@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUserId } from "@/lib/identity";
 import { saveQuizScore, quizHistory, getTopic, getOrCreateProfile, updateProfile } from "@/lib/db";
 
 // Persist a quiz result and fold it into the learner profile + topic progress.
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { userId: string; topicId: string; score: number; total: number };
-    const userId = (body.userId || "demo-user").trim().slice(0, 64) || "demo-user";
+    const userId = await requireUserId();
     const topicId = (body.topicId || "").trim();
     if (!topicId) return NextResponse.json({ error: "topicId required" }, { status: 400 });
 

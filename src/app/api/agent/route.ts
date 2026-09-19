@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUserId } from "@/lib/identity";
 import {
   getOrCreateProfile,
   updateProfile,
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
   const abort = new AbortController();
   try {
     const body = (await req.json()) as AgentRequestBody;
-    const userId = sanitizeUserId(body.userId);
+    const userId = await requireUserId();
 
     // ---- job status polling ----
     if (body.mode === "job_status") {
@@ -260,10 +261,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function sanitizeUserId(raw: string): string {
-  const v = (raw || "demo-user").trim().slice(0, 64);
-  return v || "demo-user";
-}
 
 // Run the memory update without awaiting; failures are swallowed.
 function updateMemoryAsync(

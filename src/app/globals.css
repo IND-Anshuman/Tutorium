@@ -1352,3 +1352,9 @@ button:not(:disabled):active {
 .widget-card--flash.quiz-tricky .flashcard-tag--back {
   color: color-mix(in oklab, var(--t-accent, var(--brand)) 75%, var(--ink-2));
 }
+
+/* ---- Clerk auth controls ---- */
+.clerk-controls { position: fixed; top: 10px; right: 14px; z-index: 90; display: flex; gap: 8px; align-items: center; }
+.clerk-btn { min-height: 34px; padding: 0 var(--space-sm); font-size: 0.8rem; }
+.auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+.auth-card { width: 100%; max-width: 420px; }

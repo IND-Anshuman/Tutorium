@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUserId } from "@/lib/identity";
 import {
   getLastActiveTopic,
   getLastOpenSession,
@@ -14,7 +15,7 @@ import {
 // fall back to the user's most-recent open session, then (legacy) most-recent topic.
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const userId = (url.searchParams.get("userId") || "demo-user").trim().slice(0, 64) || "demo-user";
+  const userId = await requireUserId();
   const sessionIdParam = url.searchParams.get("sessionId")?.trim() || null;
   const topicIdParam = url.searchParams.get("topicId")?.trim() || null;
 
