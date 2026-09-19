@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTopic, getSubject, listMaterials, listMessages, getTopicProgress } from "@/lib/db";
 
-export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
-  const topic = getTopic(ctx.params.id);
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const topic = getTopic((await ctx.params).id);
   if (!topic) return NextResponse.json({ error: "topic not found" }, { status: 404 });
   const subject = getSubject(topic.subject_id);
   return NextResponse.json({
