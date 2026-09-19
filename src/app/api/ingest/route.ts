@@ -1,6 +1,8 @@
 // PDF text extraction — pure JS via unpdf (pdf.js), in-memory, no disk writes.
 // POST multipart/form-data with a single "file" field.
 import { NextRequest, NextResponse } from "next/server";
+import { requireUserId } from "@/lib/identity";
+import { checkRateLimit } from "@/lib/limits";
 import { extractText, getDocumentProxy } from "unpdf";
 
 export const maxDuration = 60;
@@ -10,6 +12,11 @@ const MAX_PAGES = 200;
 
 export async function POST(req: NextRequest) {
   try {
+    const userId = await requireUserId();
+    const limited = checkRateLimit(userId, "ingest");
+    if (limited) {
+      return NextResponse.json({ error: limited.friendly }, { status: 429 });
+    }
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {

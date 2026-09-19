@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUserId } from "@/lib/identity";
+import { checkRateLimit, checkDailyBudget, recordLlmCall, LIMITS, DAILY_LLM_BUDGET, callsToday, pruneBuckets } from "@/lib/limits";
 import {
   getOrCreateProfile,
   updateProfile,
@@ -54,6 +55,17 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as AgentRequestBody;
     const userId = await requireUserId();
+    pruneBuckets();
+    const limited = checkRateLimit(userId, "agent");
+    if (limited) {
+      return NextResponse.json({ error: limited.friendly }, { status: 429 });
+    }
+    if (!checkDailyBudget(userId)) {
+      return NextResponse.json(
+        { error: `You've hit today's tutoring budget (${DAILY_LLM_BUDGET} AI calls). The counter resets at midnight — come back tomorrow or explore your library meanwhile.` },
+        { status: 429 }
+      );
+    }
 
     // ---- job status polling ----
     if (body.mode === "job_status") {
@@ -169,6 +181,7 @@ export async function POST(req: NextRequest) {
     // Heavy generations (study pack, visual) never block the response: hand them
     // to the background runner and return a 202 with a jobId the client polls.
     if (classification.intent === "create_study_pack" || classification.intent === "make_visual") {
+      recordLlmCall(userId);
       const jobId = createJob(userId, classification.intent === "make_visual" ? "visual" : "study_pack", {
         topicId: topic.id,
         message,
@@ -210,6 +223,7 @@ export async function POST(req: NextRequest) {
         : null,
     };
 
+    recordLlmCall(userId);
     const result = await orchestrateTurn(ctx);
     const reply = result.reply;
 

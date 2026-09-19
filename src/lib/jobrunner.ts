@@ -1,6 +1,7 @@
 // Background job runner (single-process demo): polls the jobs table and runs
 // pending study-pack generation so /api/agent's heavy path never blocks the UI.
 import { getJob, setJobStatus, getMaterial, saveMaterial, saveMessage, asInteractive } from "./db";
+import { recordLlmCall } from "./limits";
 import { orchestrateTurn, type OrcCtx } from "./orchestrate";
 
 const POLL_MS = 1500;
@@ -64,6 +65,7 @@ async function runJob(jobId: string) {
 
   let result;
   try {
+    recordLlmCall(job.user_id || "demo-user");
     result = await orchestrateTurn(ctx);
   } catch (e) {
     // Backstop: even a hard failure must leave an honest, persisted message so

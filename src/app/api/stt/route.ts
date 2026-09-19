@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { transcribeBatch, speechmaticsConfigured } from "@/lib/speechmatics";
 import { sayItBackScore } from "@/lib/sayitback";
 import { getMaterial } from "@/lib/db";
+import { requireUserId } from "@/lib/identity";
+import { checkRateLimit } from "@/lib/limits";
 
 export const maxDuration = 180;
 
@@ -18,6 +20,11 @@ interface RouteBody {
 
 export async function POST(req: NextRequest) {
   try {
+    const userId = await requireUserId();
+    const limited = checkRateLimit(userId, "stt");
+    if (limited) {
+      return NextResponse.json({ error: limited.friendly }, { status: 429 });
+    }
     if (!speechmaticsConfigured()) {
       return NextResponse.json({ error: "SPEECHMATICS_API_KEY not configured" }, { status: 500 });
     }
