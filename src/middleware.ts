@@ -5,7 +5,13 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 // Public: health probe, Clerk's own handlers, Next internals.
 const isPublic = createRouteMatcher(["/api/health", "/sign-in(.*)", "/sign-up(.*)", "/_clerk(.*)"]);
 
-export default clerkMiddleware(async (auth, req: NextRequest) => {
+// Read key presence LIVE: containers may deploy with or without Clerk. When absent
+// (local dev), fall through unauthenticated instead of hard-failing the edge runtime.
+const CLERK_ON = !!(
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
+);
+
+const clerkHandler = clerkMiddleware(async (auth, req: NextRequest) => {
   if (isPublic(req)) return NextResponse.next();
   const { userId } = await auth();
   if (!userId) {
@@ -20,9 +26,17 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   return NextResponse.next();
 });
 
+export default function middleware(req: NextRequest, event: unknown) {
+  if (!CLERK_ON) {
+    // Demo/dev mode: no Clerk configured → everything passes (identity.ts uses demo-user).
+    return NextResponse.next();
+  }
+  return clerkHandler(req, event);
+}
+
 export const config = {
   matcher: [
     // Skip Next internals + static files
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
