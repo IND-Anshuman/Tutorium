@@ -26,7 +26,8 @@ const clerkHandler = clerkMiddleware(async (auth, req: NextRequest) => {
   return NextResponse.next();
 });
 
-export default function middleware(req: NextRequest, event: NextFetchEvent) {
+// Proxy convention (Next 16): renamed from middleware.ts per deprecation notice.
+export default function proxy(req: NextRequest, event: NextFetchEvent) {
   if (!CLERK_ON) {
     // No Clerk keys configured. Dev/demo convenience: pass through (identity.ts
     // uses demo-user). But a PRODUCTION deployment without auth must fail CLOSED:
