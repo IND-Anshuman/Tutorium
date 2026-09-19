@@ -91,8 +91,10 @@ CREATE INDEX IF NOT EXISTS idx_quiz_topic ON quiz_scores(topic_id);
 `);
 
 // Idempotent migration: add messages.session_id if missing.
+// Migration guards must survive a FRESH database (containers start empty):
+// table_info on a missing table returns [] and the ALTER would fail.
 const msgCols = db.prepare(`PRAGMA table_info(messages)`).all() as { name: string }[];
-if (!msgCols.some((c) => c.name === "session_id")) {
+if (msgCols.length > 0 && !msgCols.some((c) => c.name === "session_id")) {
   db.exec(`ALTER TABLE messages ADD COLUMN session_id TEXT;`);
 }
 db.exec(`
