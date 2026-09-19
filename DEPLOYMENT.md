@@ -33,6 +33,8 @@
 
 1. **Secrets:** console.cloud.google.com → Secret Manager → *Create secret* ×3 —
    `featherless-api-key`, `speechmatics-api-key`, `clerk-secret-key` (paste values). Region `asia-south1`.
+   **Clerk keys must be PRODUCTION keys** (`pk_live_`/`sk_live_` — create a production instance at
+   dashboard.clerk.com; dev instances have strict usage limits and `pk_test_` shows a console warning).
 2. **Cloud Run → Create service →** "Continuously deploy new revisions from a source repository" →
    connect GitHub → `IND-Anshuman/Tutorium`, branch `main`, build type **Dockerfile** (repo root).
 3. **Service settings:**
