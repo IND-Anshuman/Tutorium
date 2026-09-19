@@ -26,3 +26,4 @@ Thumbs.db
 # generated
 next-env.d.ts
 .hermes
+.venv-ocr.env.local.bak

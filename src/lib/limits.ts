@@ -19,7 +19,7 @@ export interface LimitRule {
   friendly: string;
 }
 
-export const LIMITS: Record<"agent" | "stt" | "ingest", LimitRule> = {
+export const LIMITS: Record<"agent" | "stt" | "ingest" | "ocr", LimitRule> = {
   agent: {
     name: "agent",
     max: 20,
@@ -38,10 +38,19 @@ export const LIMITS: Record<"agent" | "stt" | "ingest", LimitRule> = {
     windowMs: 60 * 60 * 1000,
     friendly: "You've attached 3 documents this hour — that's the cap for now.",
   },
+  // OCR is gated separately because it's the expensive path (VLM inference,
+  // not just a pipeline). 4/hour is generous for a study session — if you're
+  // scanning more than that, split the document.
+  ocr: {
+    name: "ocr",
+    max: 4,
+    windowMs: 60 * 60 * 1000,
+    friendly: "OCR is capped at 4 scans per hour to keep costs predictable — try again later or upload a text PDF.",
+  },
 };
 
 // Returns null when allowed, or the rule that blocked.
-export function checkRateLimit(identity: string, kind: "agent" | "stt" | "ingest"): LimitRule | null {
+export function checkRateLimit(identity: string, kind: "agent" | "stt" | "ingest" | "ocr"): LimitRule | null {
   const rule = LIMITS[kind];
   const key = `${rule.name}:${identity}`;
   const now = Date.now();

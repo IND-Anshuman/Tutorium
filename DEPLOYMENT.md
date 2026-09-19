@@ -13,9 +13,19 @@
   the userId (`clerk:<id>`), never the client. When `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY`
   are absent (local dev), the app falls back to `demo-user` — this fallback is IMPOSSIBLE on a
   deployed service with keys configured.
-- **Spend guards:** in-memory token buckets (agent 20/10min, STT 6/10min, ingest 3/hour per user)
+- **Spend guards:** in-memory token buckets (agent 20/10min, STT 6/10min, ingest 3/hour, **OCR 4/hour** per user)
   + persisted daily LLM-call counter (`spend_guard` table, `TUTORIUM_DAILY_LLM_BUDGET`, default 300/day/user).
+  OCR calls also count toward the daily budget (VLM inference is the most expensive single call in the system).
   Budget check fails OPEN if the counter table is unavailable (limits never take the app down).
+- **OCR (scanned PDF fallback):** `/api/ingest` tries `unpdf` text extraction first (free path).
+  If the PDF has no embedded text, it rasterizes pages via `unpdf.renderPageAsImage` + `@napi-rs/canvas`
+  (native, Rust-backed — fast, no system deps) and POSTs the images to a Vision-Language Model
+  (`Qwen/Qwen3-VL-30B-A3B-Instruct` via your existing Featherless account). Same Bearer auth, same
+  `/v1/chat/completions` endpoint, just a different model id. Cap: **3 pages per request** (longer scans
+  413 with a friendly split-this-message). Without `TUTORIUM_OCR_API_KEY`/`TUTORIUM_OCR_MODEL`,
+  scanned PDFs 422 with a one-liner telling the user how to enable it.
+  **Cannot be smoke-tested from the developer's local machine** — Cloudflare blocks the local egress IP
+  to Cloudflare-fronted providers (Clerk, Featherless). Works from Cloud Run (different egress IP).
 
 ## Environment variables (runtime)
 
@@ -25,6 +35,8 @@
 | `CLERK_SECRET_KEY` | Clerk backend | Secret Manager |
 | `FEATHERLESS_API_KEY` | LLM provider | Secret Manager |
 | `SPEECHMATICS_API_KEY` | STT provider | Secret Manager |
+| `TUTORIUM_OCR_API_KEY` | OCR (VLM) provider — defaults to `TUTORIUM_LLM_API_KEY` | optional, env var is fine |
+| `TUTORIUM_OCR_MODEL` | OCR VLM model id | optional, default `Qwen/Qwen3-VL-30B-A3B-Instruct` |
 | `TUTORIUM_DATA_DIR` | SQLite dir | Dockerfile (default `/data`) |
 | `TUTORIUM_LLM_PRIMARY_TIMEOUT_MS` | Provider failover speed | optional, default 22s |
 | `TUTORIUM_DAILY_LLM_BUDGET` | Daily per-user LLM calls | optional, default 300 |
@@ -84,14 +96,43 @@ gcloud run deploy tutorium \
 ## Post-deploy verification (the smoke)
 
 ```bash
-URL=$(gcloud run services describe tutorium --region asia-south1 --format='value(status.url)')
-curl -s $URL/api/health | jq        # expect: ok:true, auth:"clerk", llmKey:true, stt:"speechmatics"
-curl -s $URL/ -o /dev/null -w '%{http_code}\n'   # 307/200 → sign-in redirect or app
+URL=<your-cloud-run-url>
+
+# 1. health: all keys present, dynamic (not build-time) booleans
+curl -s $URL/api/health | jq
+# expect: ok:true, llmKey:true, stt:"speechmatics", auth:"clerk", ocrKey:true, ocr:"Qwen/Qwen3-VL-30B-A3B-Instruct"
+
+# 2. unauth gate: pages redirect to /sign-in, APIs 401
+curl -s $URL/ -o /dev/null -w '%{http_code}\n'   # 307
 curl -s -X POST $URL/api/agent -H 'Content-Type: application/json' \
-  -d '{"userId":"x","message":"hi"}' -w '%{http_code}\n'  # 401 without a Clerk session (userId is IGNORED)
+  -d '{"message":"hi"}' -w '%{http_code}\n'      # 401
+
+# 3. ingest: text PDF
+curl -s -X POST $URL/api/ingest -F file=@notes.pdf \
+  -b "<clerk-session-cookie>" | jq '.source, .chars'
+# expect: "text", >0
+
+# 4. ingest: scanned PDF (the new path)
+curl -s -X POST $URL/api/ingest -F file=@scanned-notes.pdf \
+  -b "<clerk-session-cookie>" | jq '.source, .chars, .ocrModel'
+# expect: "ocr", >0, "Qwen/Qwen3-VL-30B-A3B-Instruct"
+#   >3 pages  → 413 with "split the document"
+#   no OCR key → 422 with "OCR isn't configured"
 ```
 
-Sign in through the browser (Clerk modal), then walk: teach → study pack → quiz → say-it-back → PDF → review queue.
+Sign in through the browser (Clerk modal), then walk: teach → study pack → quiz → say-it-back → PDF → review queue → upload a scanned note PDF.
+
+## Cost (per typical demo)
+
+| Path | Cost |
+|---|---|
+| Chat turn (primary model, ~500 tok in/300 out) | ~$0.0005 |
+| Chat turn (fallback model) | ~$0.0005 |
+| STT 60s of speech | ~$0.005 |
+| OCR scan, 1 page (Qwen3-VL, 1 image) | ~$0.001–0.005 |
+| OCR scan, 3 pages (cap) | ~$0.003–0.015 |
+
+A 10-turn demo session with 1 scanned PDF = roughly **$0.02–0.05** of provider spend, well inside any free tier.
 
 ## Ops
 

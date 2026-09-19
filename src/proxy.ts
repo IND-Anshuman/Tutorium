@@ -14,11 +14,11 @@ const CLERK_ON = !!(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
 );
 
-// Hard cap matched to the /api/ingest route's 15MB limit. We check Content-Length
-// before anything reads the body so Next's 10MB middleware-buffer warning
-// ("Request body exceeded 10MB...") never fires. Multipart boundary pushes the
-// true wire size a hair above the file size; we round up generously.
-const MAX_INGEST_BYTES = 16 * 1024 * 1024; // 16MB
+// Hard cap matched to the /api/ingest route's 30MB limit (MAX_BYTES there).
+// We check Content-Length before anything reads the body so Next's 10MB
+// middleware-buffer warning never fires. Multipart boundary pushes the true
+// wire size a hair above the file size; we cap at 30MB on the wire too.
+const MAX_INGEST_BYTES = 30 * 1024 * 1024; // 30MB
 
 const clerkHandler = clerkMiddleware(async (auth, req: NextRequest) => {
   if (PUBLIC_PATH.test(req.nextUrl.pathname)) return NextResponse.next();
@@ -28,7 +28,7 @@ const clerkHandler = clerkMiddleware(async (auth, req: NextRequest) => {
     const len = Number(req.headers.get("content-length") ?? 0);
     if (len > MAX_INGEST_BYTES) {
       return NextResponse.json(
-        { error: `file too large (max 15 MB, got ${(len / 1024 / 1024).toFixed(1)} MB)` },
+        { error: `file too large (max 30 MB, got ${(len / 1024 / 1024).toFixed(1)} MB)` },
         { status: 413 },
       );
     }

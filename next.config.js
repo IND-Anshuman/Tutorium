@@ -2,12 +2,16 @@
 const nextConfig = {
   output: "standalone",
   experimental: {
-    // 16MB proxy buffer (slightly above route's 15MB cap so multipart uploads
-    // up to the cap survive double-buffering in Clerk's middleware). The proxy
-    // also enforces a hard 15MB ceiling on Content-Length before reading the
-    // body, so Next's built-in warning + truncation never fire.
-    proxyClientMaxBodySize: "16mb",
+    // 32MB proxy buffer — sits above the 30MB /api/ingest cap with a small
+    // headroom for multipart boundaries. Must match the proxy.ts Content-Length
+    // gate (30MB) and the route's file.size cap (30MB) so all three limits
+    // agree. Below Cloud Run's 32MB request-body edge limit.
+    proxyClientMaxBodySize: "32mb",
   },
+  // @napi-rs/canvas ships native bindings that Turbopack can't bundle — keep
+  // it external so it's required at runtime from node_modules. Without this,
+  // the build fails with "non-ecmascript placeable asset".
+  serverExternalPackages: ["@napi-rs/canvas"],
 };
 
 module.exports = nextConfig;
