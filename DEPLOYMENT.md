@@ -29,6 +29,21 @@
 | `TUTORIUM_LLM_PRIMARY_TIMEOUT_MS` | Provider failover speed | optional, default 22s |
 | `TUTORIUM_DAILY_LLM_BUDGET` | Daily per-user LLM calls | optional, default 300 |
 
+## Deploy via Cloud Run console (GUI, no gcloud)
+
+1. **Secrets:** console.cloud.google.com → Secret Manager → *Create secret* ×3 —
+   `featherless-api-key`, `speechmatics-api-key`, `clerk-secret-key` (paste values). Region `asia-south1`.
+2. **Cloud Run → Create service →** "Continuously deploy new revisions from a source repository" →
+   connect GitHub → `IND-Anshuman/Tutorium`, branch `main`, build type **Dockerfile** (repo root).
+3. **Service settings:**
+   - Service name `tutorium`, region `asia-south1`, ingress "All traffic", auth "Allow unauthenticated" (Clerk guards the app).
+   - **Container tab → port `8080`**; CPU 1, Memory **1 Gi**.
+   - **Capacity:** min instances 0, **max instances 1** (REQUIRED — jobrunner + rate limits are per-process), concurrency **40**, request timeout **300 s**.
+4. **Variables & secrets tab:** env var `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<pk_...>`, `TUTORIUM_DATA_DIR=/data`;
+   expose secrets: `CLERK_SECRET_KEY` ← `clerk-secret-key`, `FEATHERLESS_API_KEY` ← `featherless-api-key`, `SPEECHMATICS_API_KEY` ← `speechmatics-api-key` (all `latest`).
+5. **Create →** first build takes ~10–15 min (Cloud Build + Artifact Registry enable themselves on first use).
+   Then hit `<URL>/api/health` → expect `ok:true, auth:"clerk", llmKey:true, stt:"speechmatics"`.
+
 ## Deploy (copy-paste, in order)
 
 ```bash
