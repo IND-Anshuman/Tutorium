@@ -16,32 +16,37 @@
   color-scheme: dark;
 
   /* ── brand + surface (green-black) ─────────────────────────── */
-  --bg:          oklch(0.140 0.016 145); /* page ground — deep green-black */
-  --surface:     oklch(0.182 0.020 148); /* panels, bubbles, cards */
-  --surface-2:   oklch(0.220 0.023 150); /* raised: hover, top surfaces */
-  --surface-3:   oklch(0.252 0.025 152); /* inset / wells */
-  --border:      oklch(0.275 0.028 152); /* hairline dividers */
-  --border-strong: oklch(0.335 0.034 152);
+  /* Elevation ladder is spaced wider than before: each step must be
+     visibly lighter than the last so panels read as layers, not smudges. */
+  --bg:          oklch(0.145 0.014 150); /* page ground — deep green-black */
+  --surface:     oklch(0.196 0.022 150); /* panels, bubbles, cards */
+  --surface-2:   oklch(0.252 0.026 150); /* raised: hover, top surfaces */
+  --surface-3:   oklch(0.305 0.028 150); /* inset / wells */
+  --border:      oklch(0.320 0.030 150); /* hairline dividers */
+  --border-strong: oklch(0.400 0.036 150);
 
   /* ── ink (warm-tinted text, green-leaning) ─────────────────── */
-  --ink:         oklch(0.930 0.013 138); /* primary text — near-warm-white */
-  --ink-2:       oklch(0.745 0.022 145); /* secondary text */
-  --ink-3:       oklch(0.600 0.024 150); /* tertiary / caption text */
+  --ink:         oklch(0.945 0.010 145); /* primary text — warm white */
+  --ink-2:       oklch(0.790 0.020 148); /* secondary text — AA on all surfaces */
+  --ink-3:       oklch(0.655 0.022 150); /* tertiary / caption text */
 
   /* ── brand + semantics ─────────────────────────────────────── */
-  --brand:       oklch(0.720 0.120 148); /* primary action, active, focus */
-  --brand-hover: oklch(0.780 0.115 150);
-  --brand-ink:   oklch(0.140 0.020 150); /* text on brand fills */
+  /* Brand green: chroma raised 0.120 → 0.170 — vivid spring green,
+     no longer washed-out mint. Amber is VOICE-ONLY: mic, active voice
+     states, the lamp accent. It no longer decorates anything else. */
+  --brand:       oklch(0.760 0.170 150); /* primary action, active, focus */
+  --brand-hover: oklch(0.810 0.160 150);
+  --brand-ink:   oklch(0.155 0.030 150); /* text on brand fills */
 
-  --lamp:        oklch(0.805 0.120 78);  /* warm lamp-glow accent — voice! */
-  --lamp-ink:    oklch(0.180 0.030 70);  /* text on lamp fills */
-  --lamp-soft:   oklch(0.30 0.045 78);   /* glow wash for active mic */
+  --lamp:        oklch(0.830 0.140 80);  /* warm lamp-glow accent — voice! */
+  --lamp-ink:    oklch(0.200 0.040 75);  /* text on lamp fills */
+  --lamp-soft:   oklch(0.32 0.055 80);   /* glow wash for active mic */
 
-  --success:     oklch(0.740 0.130 155);
-  --warning:     oklch(0.790 0.120 75);
-  --danger:      oklch(0.660 0.155 25);
-  --danger-soft: oklch(0.30 0.070 25);
-  --info:        oklch(0.720 0.090 230);
+  --success:     oklch(0.780 0.150 155);
+  --warning:     oklch(0.820 0.140 80);
+  --danger:      oklch(0.700 0.170 25);
+  --danger-soft: oklch(0.32 0.080 25);
+  --info:        oklch(0.750 0.100 230);
 
   /* ── semantics cast ─────────────────────────────────────────── */
   --on-surface:   var(--ink);
@@ -49,7 +54,7 @@
   --on-lamp:      var(--lamp-ink);
 
   /* ── focus ─────────────────────────────────────────────────── */
-  --focus-ring:  var(--brand);
+  --focus-ring:  var(--lamp);
   --focus-ring-offset: 2px;
 
   /* ── typography (system stack — one tuned family, product register) */
@@ -233,12 +238,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 
 /* ── message entrance ──────────────────────────────────────── */
-@keyframes msg-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.msg-in { animation: msg-in var(--dur-base) var(--ease-out) both; }
-@media (prefers-reduced-motion: reduce) { .msg-in { animation: none; } }
+/* Single definition — the shell class below carries the animation. */
 
 /* ── markdown body ─────────────────────────────────────────── */
 .md-body { font-size: var(--text-base); line-height: var(--leading-normal); }
@@ -303,11 +303,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .rail-item {
   display: block; padding: var(--space-sm) var(--space-md);
   margin-bottom: 2px; border-radius: var(--radius-sm); text-decoration: none;
-  color: inherit; border-left: 2px solid transparent;
+  color: inherit;
   transition: background-color var(--dur-fast) var(--ease-out);
 }
 .rail-item:hover { background: var(--surface-2); }
-.rail-item.current { background: var(--surface-2); border-left-color: var(--lamp); }
+.rail-item.current { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--lamp); }
 .rail-item-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 .rail-domain { font-weight: 500; font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rail-item-meta { font-size: 0.6875rem; color: var(--ink-3); margin-top: 2px; }
@@ -316,14 +316,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .rail-toggle {
   display: inline-flex; align-items: center; gap: var(--space-xs);
   padding: 6px 14px; border-radius: var(--radius-full);
-  background: linear-gradient(135deg, var(--brand) 0%, var(--lamp) 100%);
+  background: var(--brand);
   color: var(--brand-ink); border: 0;
   cursor: pointer; font-weight: 700; font-size: var(--text-xs);
   position: relative; overflow: visible;
-  box-shadow: 0 6px 18px -8px color-mix(in oklab, var(--brand) 80%, transparent);
-  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+  transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
-.rail-toggle:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -8px color-mix(in oklab, var(--brand) 80%, transparent); }
+.rail-toggle:hover { transform: translateY(-1px); background: var(--brand-hover); }
 .rail-toggle-icon {
   display: inline-flex; flex-direction: column; gap: 3px; width: 14px;
 }
@@ -419,7 +418,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   box-shadow: 0 4px 10px -4px color-mix(in oklab, var(--bg) 80%, transparent);
 }
 .msg-avatar--assistant {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--lamp) 100%);
+  background: var(--brand);
   color: var(--brand-ink);
   margin-top: 4px;
 }
@@ -437,10 +436,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   word-wrap: break-word;
 }
 .msg-bubble--user {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-hover) 100%);
+  background: var(--brand);
   color: var(--on-brand);
   border-bottom-right-radius: 4px;
-  box-shadow: 0 6px 18px -10px color-mix(in oklab, var(--brand) 80%, transparent);
 }
 .msg-bubble--assistant {
   background: var(--surface);
@@ -547,7 +545,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: inline-flex; align-items: center; justify-content: center;
   width: 36px; height: 36px; flex: 0 0 auto;
   border-radius: 10px;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--brand) 22%, var(--surface-2)) 0%, color-mix(in oklab, var(--lamp) 18%, var(--surface-2)) 100%);
+  background: color-mix(in oklab, var(--brand) 14%, var(--surface-2));
   font-size: 1.05rem;
   border: 1px solid var(--border);
 }
@@ -656,7 +654,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px;
   border-radius: 8px;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--brand) 20%, var(--surface)) 0%, color-mix(in oklab, var(--lamp) 16%, var(--surface)) 100%);
+  background: color-mix(in oklab, var(--brand) 12%, var(--surface));
   border: 1px solid var(--border);
 }
 .info-tile-value {
@@ -691,9 +689,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: var(--text-md); line-height: 1.6;
   color: var(--ink); font-weight: 500;
   padding: var(--space-md);
-  background: var(--surface-2);
-  border-left: 3px solid var(--lamp);
-  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--lamp) 7%, var(--surface-2));
+  border: 1px solid color-mix(in oklab, var(--lamp) 25%, transparent);
+  border-radius: var(--radius-md);
 }
 .sayitback-terms { display: flex; flex-wrap: wrap; gap: 4px; margin-top: var(--space-sm); }
 .sayitback-term {
@@ -1031,7 +1029,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .topic-section-title > span[aria-hidden] {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; border-radius: 8px;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--brand) 22%, var(--surface-2)) 0%, color-mix(in oklab, var(--lamp) 18%, var(--surface-2)) 100%);
+  background: color-mix(in oklab, var(--brand) 14%, var(--surface-2));
   font-size: 0.95rem;
   border: 1px solid var(--border);
 }
@@ -1103,12 +1101,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   flex-wrap: wrap; justify-content: center;
 }
 .empty-cta-primary {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-hover) 100%) !important;
+  background: var(--brand) !important;
   color: var(--on-brand) !important;
   font-weight: 700 !important;
   font-size: var(--text-md) !important;
   padding: 10px 20px !important;
-  box-shadow: 0 8px 22px -8px color-mix(in oklab, var(--brand) 80%, transparent) !important;
 }
 .empty-cta-steps {
   list-style: none; padding: 0; margin: var(--space-sm) 0 0;
@@ -1243,7 +1240,7 @@ button:not(:disabled):active {
 .doc-veil.flashcard--flipped .flashcard-face--back .flashcard-text { filter: none; }
 
 /* ---- trickster quiz chrome ---- */
-.quiz-streak { font-size: 0.85rem; font-weight: 700; color: #f59e0b; }
+.quiz-streak { font-size: 0.85rem; font-weight: 700; color: var(--warning); }
 .quiz-timer { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; margin: 2px 0 8px; }
 .quiz-timer-bar { height: 100%; background: var(--brand); transition: width 1s linear; }
 .quiz-choice--dimmed { opacity: 0.35; pointer-events: none; }
@@ -1259,10 +1256,10 @@ button:not(:disabled):active {
 /* ---- review queue ---- */
 .review-meta { font-size: 0.82rem; color: var(--ink-3); }
 .review-items { display: flex; flex-direction: column; gap: 6px; }
-.review-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--surface-2); }
-.review-item--term { border-left: 3px solid #f59e0b; }
-.review-item--weak_area { border-left: 3px solid #ef4444; }
-.review-item--quiz { border-left: 3px solid var(--brand); }
+.review-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius-md); background: var(--surface-2); border: 1px solid var(--border); }
+.review-item--term { border-color: color-mix(in oklab, var(--warning) 40%, transparent); background: color-mix(in oklab, var(--warning) 8%, var(--surface-2)); }
+.review-item--weak_area { border-color: color-mix(in oklab, var(--danger) 40%, transparent); background: color-mix(in oklab, var(--danger) 8%, var(--surface-2)); }
+.review-item--quiz { border-color: color-mix(in oklab, var(--brand) 40%, transparent); background: color-mix(in oklab, var(--brand) 8%, var(--surface-2)); }
 .review-item-icon { font-size: 1rem; }
 .review-item-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .review-item-label { font-weight: 600; font-size: 0.86rem; color: var(--ink); }
@@ -1271,9 +1268,9 @@ button:not(:disabled):active {
 
 /* ---- debate ---- */
 .debate-round { display: flex; flex-direction: column; gap: 10px; }
-.debate-voice { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-md); }
-.debate-voice--skeptic { background: color-mix(in oklab, #ef4444 9%, var(--surface-2)); border-left: 3px solid #ef4444; }
-.debate-voice--enthusiast { background: color-mix(in oklab, #22c55e 9%, var(--surface-2)); border-left: 3px solid #22c55e; }
+.debate-voice { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border); }
+.debate-voice--skeptic { background: color-mix(in oklab, var(--danger) 9%, var(--surface-2)); border-color: color-mix(in oklab, var(--danger) 35%, transparent); }
+.debate-voice--enthusiast { background: color-mix(in oklab, var(--success) 9%, var(--surface-2)); border-color: color-mix(in oklab, var(--success) 35%, transparent); }
 .debate-avatar { font-size: 1.1rem; }
 .debate-name { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); }
 .debate-text { margin: 0; font-size: 0.88rem; line-height: 1.5; color: var(--ink); }
@@ -1296,12 +1293,12 @@ button:not(:disabled):active {
 .voicequiz-error { font-size: 0.8rem; color: var(--danger); padding: 6px 0; }
 .voicequiz-transcript { font-size: 0.78rem; color: var(--ink-3); font-style: italic; padding: 4px 0; }
 .voicequiz-say { margin-left: 8px; display: inline-flex; }
-.quiz-trap { margin: 0 0 6px; font-size: 0.82rem; color: #f59e0b; font-weight: 600; }
+.quiz-trap { margin: 0 0 6px; font-size: 0.82rem; color: var(--warning); font-weight: 600; }
 
 /* ---- weakness radar + export ---- */
 .radar-svg { width: 200px; max-width: 100%; margin: 4px auto; display: block; }
 .radar-hints { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.radar-hint { font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: color-mix(in oklab, #ef4444 10%, var(--surface-2)); color: var(--ink-2); }
+.radar-hint { font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: color-mix(in oklab, var(--danger) 10%, var(--surface-2)); color: var(--ink-2); }
 .export-pack { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---- explore-more tray (discoverability for new users) ---- */
@@ -1358,3 +1355,60 @@ button:not(:disabled):active {
 .clerk-btn { min-height: 34px; padding: 0 var(--space-sm); font-size: 0.8rem; }
 .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
 .auth-card { width: 100%; max-width: 420px; }
+
+/* ══════════════════════════════════════════════════════════════
+   Component dynamics — motion that conveys state (product register)
+   Stagger = list rhythm. Pop = the answer-reveal moment. Meter =
+   progress. All transform/opacity only; all reduced-motion safe.
+   ══════════════════════════════════════════════════════════════ */
+
+/* Sibling stagger for choice lists & tile grids — nth-child driven,
+   works without JS. Items appear one after another, ~45ms apart. */
+.quiz-choices > *, .actions-grid > *, .info-grid > *, .topic-toc-grid > *,
+.vocab-cloud > *, .sayitback-terms > *, .doc-terms > *,
+.review-items > *, .explore-more-grid > * {
+  animation: item-in var(--dur-base) var(--ease-out) both;
+}
+.quiz-choices > *:nth-child(2), .actions-grid > *:nth-child(2),
+.info-grid > *:nth-child(2), .topic-toc-grid > *:nth-child(2),
+.review-items > *:nth-child(2), .explore-more-grid > *:nth-child(2) { animation-delay: 45ms; }
+.quiz-choices > *:nth-child(3), .actions-grid > *:nth-child(3),
+.info-grid > *:nth-child(3), .topic-toc-grid > *:nth-child(3),
+.review-items > *:nth-child(3), .explore-more-grid > *:nth-child(3) { animation-delay: 90ms; }
+.quiz-choices > *:nth-child(4), .actions-grid > *:nth-child(4),
+.info-grid > *:nth-child(4), .topic-toc-grid > *:nth-child(4),
+.review-items > *:nth-child(4), .explore-more-grid > *:nth-child(4) { animation-delay: 135ms; }
+.review-items > *:nth-child(n+5), .explore-more-grid > *:nth-child(n+5) { animation-delay: 180ms; }
+@keyframes item-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Answer reveal: the moment a choice is judged. The chosen row pulses
+   once — scale-breathe, not bounce — then settles. */
+@keyframes answer-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.015); }
+  100% { transform: scale(1); }
+}
+.quiz-choice--correct, .quiz-choice--wrong {
+  animation: answer-pop 300ms var(--ease-out) both;
+}
+
+/* Quiz meter fills with a confident ease, not linear drift */
+.quiz-meter-bar { transition: width var(--dur-slow) var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)); }
+
+/* Focus: the lamp glow rings the whole control, not just text */
+.empty-cta-input:focus {
+  border-color: var(--lamp) !important;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--lamp) 25%, transparent) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quiz-choices > *, .actions-grid > *, .info-grid > *, .topic-toc-grid > *,
+  .vocab-cloud > *, .sayitback-terms > *, .doc-terms > *,
+  .review-items > *, .explore-more-grid > *,
+  .quiz-choice--correct, .quiz-choice--wrong {
+    animation: none;
+  }
+}
