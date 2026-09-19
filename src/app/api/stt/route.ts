@@ -35,6 +35,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "audioBase64 required" }, { status: 400 });
     }
     const bytes = Buffer.from(audioBase64, "base64");
+    // Hard cap: ~10MB decoded (~13 min of webm audio). Prevents a huge base64
+    // body from ballooning into a 67MB JSON string inside a 1Gi container.
+    const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+    if (bytes.byteLength > MAX_AUDIO_BYTES) {
+      return NextResponse.json(
+        { error: "That recording is too long — keep clips under about 10 minutes." },
+        { status: 413 }
+      );
+    }
     const file = bytes.buffer.slice(
       bytes.byteOffset,
       bytes.byteOffset + bytes.byteLength
