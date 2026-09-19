@@ -14,8 +14,25 @@ const CLERK_ON = !!(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY
 );
 
+// Hard cap matched to the /api/ingest route's 15MB limit. We check Content-Length
+// before anything reads the body so Next's 10MB middleware-buffer warning
+// ("Request body exceeded 10MB...") never fires. Multipart boundary pushes the
+// true wire size a hair above the file size; we round up generously.
+const MAX_INGEST_BYTES = 16 * 1024 * 1024; // 16MB
+
 const clerkHandler = clerkMiddleware(async (auth, req: NextRequest) => {
   if (PUBLIC_PATH.test(req.nextUrl.pathname)) return NextResponse.next();
+  // Body-size gate: cheaper than letting Next double-buffer an oversize body.
+  // Only enforced on upload routes; everything else is small JSON.
+  if (req.nextUrl.pathname === "/api/ingest") {
+    const len = Number(req.headers.get("content-length") ?? 0);
+    if (len > MAX_INGEST_BYTES) {
+      return NextResponse.json(
+        { error: `file too large (max 15 MB, got ${(len / 1024 / 1024).toFixed(1)} MB)` },
+        { status: 413 },
+      );
+    }
+  }
   const { userId } = await auth();
   if (!userId) {
     // API: 401 JSON the client can surface. Pages: redirect to sign-in.
