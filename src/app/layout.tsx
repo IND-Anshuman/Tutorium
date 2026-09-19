@@ -11,12 +11,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider dynamic>
-      <body className="min-h-screen">
-        <div className="clerk-controls" role="region" aria-label="Account">
-          <AccountControls />
-        </div>
-        {children}
-      </body>
-    </ClerkProvider>
+          <html lang="en">
+            <body className="min-h-screen">
+              <div className="clerk-controls" role="region" aria-label="Account">
+                <AccountControls />
+              </div>
+              {children}
+            </body>
+          </html>
+        </ClerkProvider>
   );
 }

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest, NextFetchEvent } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
-// Public: health probe, Clerk's own handlers, Next internals.
-const isPublic = createRouteMatcher(["/api/health", "/sign-in(.*)", "/sign-up(.*)", "/_clerk(.*)"]);
+// Public paths via native matching — createRouteMatcher() is deprecated in
+// Clerk v7 (removal next major). Resource-level checks still exist in every
+// API route (requireUserId) and the fail-closed branch; this proxy layer is
+// the early-redirect/UX gate, not the only one.
+const PUBLIC_PATH = /^\/(api\/health|sign-in|sign-up|_clerk)(\/|$|\?)/;
 
 // Read key presence LIVE: containers may deploy with or without Clerk. When absent
 // (local dev), fall through unauthenticated instead of hard-failing the edge runtime.
@@ -12,7 +15,7 @@ const CLERK_ON = !!(
 );
 
 const clerkHandler = clerkMiddleware(async (auth, req: NextRequest) => {
-  if (isPublic(req)) return NextResponse.next();
+  if (PUBLIC_PATH.test(req.nextUrl.pathname)) return NextResponse.next();
   const { userId } = await auth();
   if (!userId) {
     // API: 401 JSON the client can surface. Pages: redirect to sign-in.
