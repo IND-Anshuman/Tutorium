@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env*.local
+data
+*.db
+.hermes
+Dockerfile
+README.md
+CLAUDE.md
+AGENTS.md
+npm-debug.log*
