@@ -18,10 +18,20 @@ const db: Database.Database =
   globalThis.__tutoriumDb ?? new Database(dbPath);
 globalThis.__tutoriumDb = db;
 
-db.pragma("journal_mode = WAL");
+// Skip ALL schema work during `next build`: page-data collection imports this
+// module in transient workers, and several workers racing a FRESH database file
+// have thrown a spurious SQLITE_ERROR mid-schema (observed once in a Docker
+// build). No route module touches the DB at build time — tables are created at
+// runtime startup instead (container boot / first request).
+const isNextBuild = process.env.NEXT_PHASE === "phase-production-build";
+const execIfRuntime = (sql: string) => {
+  if (!isNextBuild) db.exec(sql);
+};
+
+if (!isNextBuild) db.pragma("journal_mode = WAL");
 
 // ---------- schema ----------
-db.exec(`
+execIfRuntime(`
 CREATE TABLE IF NOT EXISTS profiles (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -94,10 +104,10 @@ CREATE INDEX IF NOT EXISTS idx_quiz_topic ON quiz_scores(topic_id);
 // Migration guards must survive a FRESH database (containers start empty):
 // table_info on a missing table returns [] and the ALTER would fail.
 const msgCols = db.prepare(`PRAGMA table_info(messages)`).all() as { name: string }[];
-if (msgCols.length > 0 && !msgCols.some((c) => c.name === "session_id")) {
+if (!isNextBuild && msgCols.length > 0 && !msgCols.some((c) => c.name === "session_id")) {
   db.exec(`ALTER TABLE messages ADD COLUMN session_id TEXT;`);
 }
-db.exec(`
+execIfRuntime(`
 CREATE TABLE IF NOT EXISTS sessions (
   id              TEXT PRIMARY KEY,
   user_id         TEXT NOT NULL,
