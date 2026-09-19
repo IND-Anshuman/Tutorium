@@ -78,6 +78,11 @@ Sign in through the browser (Clerk modal), then walk: teach → study pack → q
 
 ## Ops
 
+- **Auth fails CLOSED in production.** If a container starts without `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY`,
+  APIs return 401 with "Auth not configured" and pages 503 — `/api/health` stays reachable and will report `auth:"demo-fallback"`.
+  If you see that on a deployed URL, the `--set-env-vars`/`--set-secrets` didn't land: fix and redeploy (data is ephemeral, so a redeploy is free).
+- **Local smoke note:** Docker Desktop port 8080 is often taken — the verified local smoke used `-p 18080:8080`.
+
 - **Rollback:** `gcloud run revisions list --service tutorium` →
   `gcloud run services update-traffic tutorium --to-revisions <PREVIOUS>=100 --region asia-south1`
 - **Logs:** `gcloud run services logs read tutorium --region asia-south1 --limit 100`

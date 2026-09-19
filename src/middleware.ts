@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import type { NextRequest, NextFetchEvent } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 // Public: health probe, Clerk's own handlers, Next internals.
@@ -26,9 +26,24 @@ const clerkHandler = clerkMiddleware(async (auth, req: NextRequest) => {
   return NextResponse.next();
 });
 
-export default function middleware(req: NextRequest, event: unknown) {
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
   if (!CLERK_ON) {
-    // Demo/dev mode: no Clerk configured → everything passes (identity.ts uses demo-user).
+    // No Clerk keys configured. Dev/demo convenience: pass through (identity.ts
+    // uses demo-user). But a PRODUCTION deployment without auth must fail CLOSED:
+    // an open service would let anyone spend paid LLM/STT tokens. Misconfiguration
+    // must be loud (401/503), never a silent auth bypass.
+    if (process.env.NODE_ENV === "production") {
+          // Health probe must stay reachable even when misconfigured, or the Cloud Run
+          // liveness check restart-loops the container.
+          if (req.nextUrl.pathname === "/api/health") return NextResponse.next();
+          if (req.nextUrl.pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Auth not configured: set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY (see DEPLOYMENT.md)." },
+          { status: 401 }
+        );
+      }
+      return new NextResponse("Tutorium is misconfigured: auth keys missing (see DEPLOYMENT.md).", { status: 503 });
+    }
     return NextResponse.next();
   }
   return clerkHandler(req, event);
