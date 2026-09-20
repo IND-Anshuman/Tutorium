@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InteractivePayload, QuizItem } from "@/lib/types";
 import { matchVoiceAnswer } from "@/lib/voicequiz";
 import SpeakButton from "./SpeakButton";
@@ -10,7 +10,7 @@ type VoiceState = "idle" | "listening" | "thinking";
 interface Props {
   questions: QuizItem[];
   topicId?: string;
-  onAnswer?: (payload: { type: "voice_answer"; questionIndex: number; picked: number; transcript: string } ) => void;
+  onAnswer?: (payload: { type: "voice_answer"; questionIndex: number; picked: number; transcript: string }) => void;
 }
 
 export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
@@ -21,12 +21,32 @@ export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
   const [voice, setVoice] = useState<VoiceState>("idle");
   const [transcript, setTranscript] = useState("");
   const [micError, setMicError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const listenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silentStopRef = useRef(false);
+
+  // Stop any hot mic when the widget unmounts (topic switch, page leave) and
+  // clear the listen timer. Hooks stay unconditional (before any early return).
+  const hardStopMic = () => {
+    if (listenTimerRef.current) { clearTimeout(listenTimerRef.current); listenTimerRef.current = null; }
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      silentStopRef.current = true; // aborting: don't submit the partial recording
+      recorderRef.current.stop();
+    }
+    recorderRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  };
+  useEffect(() => hardStopMic, []);
+
   if (!questions?.length) return null;
 
   const q = questions[idx];
+  const LISTEN_TIMEOUT_MS = 30_000;
+
   const startListening = async () => {
     if (voice !== "idle" || picked !== null) return;
     setMicError(null);
@@ -42,17 +62,27 @@ export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
+        if (silentStopRef.current) { silentStopRef.current = false; return; }
         void submitRecording();
       };
       rec.start();
       setVoice("listening");
+      // A silent mic can't be allowed to record forever — cap one listen.
+      listenTimerRef.current = setTimeout(() => {
+        listenTimerRef.current = null;
+        setMicError("Didn't catch anything in 30 seconds — tap one of the choices instead.");
+        hardStopMic();
+        setVoice("idle");
+      }, LISTEN_TIMEOUT_MS);
     } catch {
       setMicError("Microphone unavailable — type the answer below instead.");
     }
   };
+
   const stopListening = () => {
     if (voice !== "listening") return;
     setVoice("thinking");
+    if (listenTimerRef.current) { clearTimeout(listenTimerRef.current); listenTimerRef.current = null; }
     recorderRef.current?.stop();
     recorderRef.current = null;
   };
@@ -67,7 +97,6 @@ export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "demo-user",
           audioBase64: base64,
           filename: "voice-quiz.webm",
           mode: "transcribe",
@@ -106,11 +135,13 @@ export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
       setVoice("idle");
     } else {
       setDone(true);
-      if (topicId) {
+      // Save once per quiz run — "Go again" re-arms the save.
+      if (topicId && !saved) {
+        setSaved(true);
         fetch("/api/quiz-score", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: "demo-user", topicId, score, total: questions.length }),
+          body: JSON.stringify({ topicId, score, total: questions.length }),
         }).catch(() => {});
       }
     }
@@ -135,7 +166,7 @@ export default function VoiceQuiz({ questions, topicId, onAnswer }: Props) {
           <div className="quiz-meter-bar" style={{ width: `${pct * 100}%`, background: tone }} />
         </div>
         <div className="quiz-actions">
-          <button className="btn btn-primary flex-1" onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); }}>
+          <button className="btn btn-primary flex-1" onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); setSaved(false); }}>
             Go again
           </button>
         </div>

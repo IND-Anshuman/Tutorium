@@ -430,11 +430,15 @@ export default function Home() {
   }, []);
 
   const regenerate = useCallback((userMsg: ChatMsg) => {
-    if (!userMsg.content || sendState !== "idle") return;
-    // Remove the existing user message + its assistant reply, then re-send.
-    setMessages((m) => m.slice(0, m.findIndex((x) => x.id === userMsg.id)));
-    void send(userMsg.content, userMsg.transcriptMeta || (userMsg.fromVoice ? { fromVoice: true } : undefined));
-  }, [sendState, send]);
+      if (!userMsg.content || sendState !== "idle") return;
+      // Drop the user bubble and everything after it; send() re-adds the bubble
+      // with a fresh id and a new reply. (Audited: original semantics correct.)
+      setMessages((m) => {
+        const cut = m.findIndex((x) => x.id === userMsg.id);
+        return cut === -1 ? m : m.slice(0, cut);
+      });
+      void send(userMsg.content, userMsg.transcriptMeta || (userMsg.fromVoice ? { fromVoice: true } : undefined));
+    }, [sendState, send]);
 
   // ---------- restore session on mount (FIX 1) ----------
   useEffect(() => {
@@ -450,27 +454,34 @@ export default function Home() {
           wantTopic   ? `userId=${USERID}&topicId=${wantTopic}` :
                         `userId=${USERID}`;
         const res = await fetch(`/api/session?${qs}`);
-        const data = await res.json();
-        if (cancelled) return;
-        if (data.session) {
-          setSessionId(data.session.id);
-          setDomain(data.session.domain || "");
-          setDomainLocked(!!data.session.domain_locked);
-          setDomainDraft(data.session.domain || "");
-          setTopicId(null);
-          setTopicTitle("");
-          if (Array.isArray(data.messages) && data.messages.length) {
-            const hydrated: ChatMsg[] = data.messages.map((m: any) => ({
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              interactive: m.interactive || null,
-              fromVoice: !!m.audio_meta,
-              transcriptMeta: m.audio_meta || null,
-            }));
-            setMessages(hydrated);
-          }
-        } else if (data.topic) {
+                const data = await res.json();
+                if (cancelled) return;
+                if (data.session) {
+                  setSessionId(data.session.id);
+                  setDomain(data.session.domain || "");
+                  setDomainLocked(!!data.session.domain_locked);
+                  setDomainDraft(data.session.domain || "");
+                  setTopicId(null);
+                  setTopicTitle("");
+                  if (Array.isArray(data.messages) && data.messages.length) {
+                    const hydrated: ChatMsg[] = data.messages.map((m: any) => ({
+                      id: m.id,
+                      role: m.role,
+                      content: m.content,
+                      interactive: m.interactive || null,
+                      fromVoice: !!m.audio_meta,
+                      transcriptMeta: m.audio_meta || null,
+                    }));
+                    // Merge, don't overwrite: if the user typed/sent a message in the
+                    // gap before hydration finished, keep it instead of swallowing it.
+                    setMessages((prev) => {
+                      if (!prev.length) return hydrated;
+                      const seen = new Set(hydrated.map((h) => h.id));
+                      const orphans = prev.filter((p) => !seen.has(p.id));
+                      return [...hydrated, ...orphans];
+                    });
+                  }
+                } else if (data.topic) {
           setTopicId(data.topic.id);
           setTopicTitle(data.topic.title);
           if (Array.isArray(data.messages) && data.messages.length) {

@@ -28,20 +28,22 @@ export default function SessionsRail({
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await fetch("/api/sessions?userId=demo-user");
-      const d = await r.json();
-      setSessions(d.sessions || []);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const r = await fetch("/api/sessions?userId=demo-user");
+        const d = await r.json();
+        if (!cancelled) setSessions(d.sessions || []);
+      } catch {
+        /* rail stays as-is on transient failures */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const startNew = useCallback(async () => {
     setCreating(true);

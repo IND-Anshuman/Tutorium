@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { QuizItem, TricksterTheme } from "@/lib/types";
 import { shuffleWithRemap, pickHints } from "@/lib/quizgen";
 
@@ -28,6 +28,7 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [dimmed, setDimmed] = useState<number[]>([]);
   const [hintsUsed, setHintsUsed] = useState(0);
+  const [saved, setSaved] = useState(false);
   if (!questions?.length) return null;
 
   // Trickster shuffle: stable per question via useMemo — answer index remaps.
@@ -45,9 +46,10 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
   const effectiveAnswer = String(answerIdx);
   const q = q0;
 
-  // countdown
-  useMemo(() => {
-    if (!timeLimit) return;
+  // countdown — useEffect, not useMemo (the old code ran setInterval during
+  // render and its cleanup was discarded, leaking a ticking timer per question).
+  useEffect(() => {
+    if (!timeLimit || picked !== null) return;
     setTimeLeft(timeLimit);
     const t = setInterval(() => {
       setTimeLeft((s) => {
@@ -63,10 +65,10 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
       });
     }, 1000);
     return () => clearInterval(t);
-  }, [idx, timeLimit]);
+  }, [idx, timeLimit, picked]);
 
   const pick = (choiceIdx: number) => {
-    if (picked !== null) return;
+    if (picked !== null) return; // single-answer guard: no double-submit
     setPicked(String(choiceIdx));
     const correct = String(choiceIdx) === effectiveAnswer;
     if (correct) {
@@ -90,11 +92,13 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
 
   const finish = () => {
     setDone(true);
-    if (topicId) {
+    // Save once per quiz run — "Try again" re-arms the save.
+    if (topicId && !saved) {
+      setSaved(true);
       fetch("/api/quiz-score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: "demo-user", topicId, score, total: questions.length }),
+        body: JSON.stringify({ topicId, score, total: questions.length }),
       }).catch(() => {});
     }
   };
@@ -152,7 +156,7 @@ export default function MiniQuiz({ questions, topicId, theme }: Props) {
         <div className="quiz-actions">
           <button
             className="btn btn-primary flex-1"
-            onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); setStreak(0); setEggShown(false); setHintsUsed(0); }}
+            onClick={() => { setIdx(0); setPicked(null); setScore(0); setDone(false); setStreak(0); setEggShown(false); setHintsUsed(0); setSaved(false); }}
           >
             Try again
           </button>
