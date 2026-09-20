@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { parseQuizCount, planQuizBands, dedupeByStem, shuffleWithRemap, pickHints } from "./quizgen";
+import {
+  parseQuizCount,
+  planQuizBands,
+  dedupeByStem,
+  shuffleWithRemap,
+  pickHints,
+  planDetailBands,
+  autoDetail,
+  parseDetailOverride,
+} from "./quizgen";
 
 describe("parseQuizCount", () => {
   it("parses explicit counts", () => {
@@ -65,5 +74,55 @@ describe("pickHints", () => {
   it("caps at available wrong choices", () => {
     expect(pickHints(choices, 0, 9).length).toBe(3);
     expect(pickHints(choices, 0, 0)).toEqual([]);
+  });
+});
+
+describe("planDetailBands", () => {
+  it("single band when source is small", () => {
+    expect(planDetailBands(800)).toEqual([800]);
+  });
+  it("splits larger sources into bounded bands", () => {
+    expect(planDetailBands(2400)).toEqual([1200, 1200]);
+    expect(planDetailBands(3600)).toEqual([1200, 1200, 1200]);
+  });
+  it("never returns more than 4 bands", () => {
+    const bands = planDetailBands(90000);
+    expect(bands).toHaveLength(4);
+    bands.forEach((b) => expect(b).toBe(22500));
+  });
+  it("returns [] for empty source", () => {
+    expect(planDetailBands(0)).toEqual([]);
+  });
+});
+
+describe("autoDetail", () => {
+  it("light for small source", () => {
+    expect(autoDetail(600)).toBe("light");
+  });
+  it("standard for medium", () => {
+    expect(autoDetail(2500)).toBe("standard");
+  });
+  it("deep for large", () => {
+    expect(autoDetail(8000)).toBe("deep");
+  });
+  it("explicit user level always wins", () => {
+    expect(autoDetail(600, "deep")).toBe("deep");
+    expect(autoDetail(9000, "light")).toBe("light");
+  });
+});
+
+describe("parseDetailOverride", () => {
+  it("detects depth requests", () => {
+    expect(parseDetailOverride("make a study pack on cells, in depth")).toBe("deep");
+    expect(parseDetailOverride("deep dive on the Krebs cycle")).toBe("deep");
+    expect(parseDetailOverride("a detailed and thorough pack")).toBe("deep");
+  });
+  it("detects lightness requests", () => {
+    expect(parseDetailOverride("just a quick pack on cells")).toBe("light");
+    expect(parseDetailOverride("short and brief, just the basics")).toBe("light");
+  });
+  it("null when nothing requested", () => {
+    expect(parseDetailOverride("make a study pack on photosynthesis")).toBeNull();
+    expect(parseDetailOverride("")).toBeNull();
   });
 });

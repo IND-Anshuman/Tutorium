@@ -78,3 +78,35 @@ export function pickHints(choices: string[], answerIdx: number, n: number): numb
   }
   return wrong.slice(0, Math.max(0, Math.min(n, wrong.length)));
 }
+
+// ---------- detail planning (study-pack depth) ----------
+
+export type DetailLevel = "light" | "standard" | "deep";
+
+// Split a raw source (by char count) into at most `maxBands` grounding bands
+// so deep-dive generation can mine the source across multiple LLM calls instead
+// of one budget-starved call. Small sources stay single-band (one call is
+// plenty; multi-call only when measured size demands it).
+export function planDetailBands(sourceChars: number, maxBands = 4, bandSize = 1200): number[] {
+  if (sourceChars <= 0) return [];
+  if (sourceChars <= bandSize) return [sourceChars];
+  const bands = Math.min(maxBands, Math.ceil(sourceChars / bandSize));
+  const per = Math.ceil(sourceChars / bands);
+  return Array.from({ length: bands }, () => per);
+}
+
+// Detail level from source size; an explicit user request always wins.
+export function autoDetail(sourceChars: number, explicit?: DetailLevel | null): DetailLevel {
+  if (explicit) return explicit;
+  if (sourceChars >= 5000) return "deep";
+  if (sourceChars >= 1500) return "standard";
+  return "light";
+}
+
+// "in depth" / "deep dive" → deep; "quick" / "just the basics" → light; else null.
+export function parseDetailOverride(message: string): DetailLevel | null {
+  const m = (message || "").toLowerCase();
+  if (/\b(in depth|deep dive|detailed|exhaustive|thorough|comprehensive)\b/.test(m)) return "deep";
+  if (/\b(quick|just the basics|short and brief|super brief|keep it brief)\b/.test(m)) return "light";
+  return null;
+}
