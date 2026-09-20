@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import InteractiveMessage from "@/components/chat/InteractiveMessage";
 import Markdown from "@/components/chat/Markdown";
 import Waveform from "@/components/ui/Waveform";
-import { EmptyState } from "@/components/ui/primitives";
+import LandingEmptyState from "@/components/chat/LandingEmptyState";
 import SessionsRail from "@/components/sessions/SessionsRail";
 import ExploreMore from "@/components/chat/ExploreMore";
 import MessageBubble from "@/components/chat/MessageBubble";
@@ -306,11 +306,22 @@ export default function Home() {
   );
 
   const cancel = useCallback(() => {
-    genRef.current++; // invalidate in-flight callbacks
-    abortRef.current?.abort();
-    setSendState("idle");
-    setError(null);
-  }, []);
+      genRef.current++; // invalidate in-flight callbacks
+      abortRef.current?.abort();
+      setSendState("idle");
+      setError(null);
+    }, []);
+
+    // ---------- first-paint landing: create a session, then reload into it ----------
+    const startSession = useCallback(async (domain: string) => {
+      const r = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: USERID, domain }),
+      });
+      const d = await r.json();
+      window.location.href = `/?session=${d.id}`;
+    }, []);
 
   // ---------- main mic (hold-to-talk) ----------
   const startRecording = useCallback(async () => {
@@ -615,63 +626,8 @@ export default function Home() {
       >
         <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-6">
           {messages.length === 0 ? (
-            <EmptyState
-              icon="🪴"
-              title="Pick a domain. Own the rest of the conversation."
-              body="Tutorium remembers what you've learned, what tripped you up, and the terms you keep forgetting — across every message in this session. Start one below."
-              actions={
-                <div className="empty-cta">
-                  <div className="empty-cta-row">
-                    <span className="empty-cta-tag" aria-hidden>1</span>
-                    <input
-                      aria-label="Domain"
-                      placeholder="e.g. Photosynthesis for USMLE · Spanish travel phrases · Rust ownership"
-                      className="domain-edit-input empty-cta-input"
-                      id="domain-input"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          (e.target as HTMLInputElement).blur();
-                          (document.getElementById("start-session-btn") as HTMLButtonElement | null)?.click();
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="empty-cta-row empty-cta-buttons">
-                    <button
-                      id="start-session-btn"
-                      className="btn btn-primary empty-cta-primary"
-                      onClick={async () => {
-                        const el = document.getElementById("domain-input") as HTMLInputElement | null;
-                        const v = el?.value.trim() || "";
-                        const r = await fetch("/api/sessions", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ userId: USERID, domain: v }),
-                        });
-                        const d = await r.json();
-                        window.location.href = `/?session=${d.id}`;
-                      }}
-                    >
-                      Start session →
-                    </button>
-                    <button
-                      className="btn btn-lamp"
-                      onClick={() => startRecording()}
-                      aria-label="Record a voice question"
-                    >
-                      <Waveform active={recording} /> Hold to speak
-                    </button>
-                    <a href="/library" className="btn btn-ghost">Open library</a>
-                  </div>
-                  <ul className="empty-cta-steps" aria-label="How Tutorium sessions work">
-                    <li><span className="empty-cta-num" aria-hidden>1</span><span><b>Name your domain.</b> One line is enough — calculus, vocabulary, a body system.</span></li>
-                    <li><span className="empty-cta-num" aria-hidden>2</span><span><b>Speak or type.</b> The tutor builds flashcards, quizzes, and a Say-It-Back drill on the fly.</span></li>
-                    <li><span className="empty-cta-num" aria-hidden>3</span><span><b>Come back later.</b> The domain chip and context strip carry the level you left at.</span></li>
-                  </ul>
-                </div>
-              }
-            />
-          ) : (
+                      <LandingEmptyState onStart={startSession} />
+                    ) : (
             <div className="space-y-5">
               {messages.map((m, i) => (
                 <MessageBubble
