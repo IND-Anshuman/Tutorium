@@ -4,49 +4,51 @@
 
 /*
   Tutorium — design system
-  Aesthetic: "Night library" — teal-cyan glow against deep navy-black, the
-    palette of the Tutorium robot logo (navy disc, cyan waveform, mint orbit).
-    Calm, focused, voice-forward (amber stays voice-only). Product register:
-    design serves the task.
+  Aesthetic: "Late-night study nook" — warm mint-green and lamp amber against
+    deep green-black. Palette lifted from the Tutorium logo's non-blue accents
+    (mint check tile, green swoosh, amber bulb); navy lives only inside the
+    logo assets. Distinctive (never the blue/teal AI palette). Product
+    register: design serves the task.
 
   Palette authored in OKLCH for perceptual consistency. Anchored on the
-    logo's teal-cyan seed; warm amber is the lamp/voice accent.
+  logo's mint-green seed; warm amber is the lamp/voice accent.
 */
 
 :root {
   color-scheme: dark;
 
-  /* ── brand + surface (teal-leaning navy-black, graded to the logo) ── */
-    /* Elevation ladder is spaced wider than before: each step must be
-       visibly lighter than the last so panels read as layers, not smudges. */
-    --bg:          oklch(0.145 0.016 230); /* page ground — deep navy-black */
-    --surface:     oklch(0.196 0.024 230); /* panels, bubbles, cards */
-    --surface-2:   oklch(0.252 0.028 230); /* raised: hover, top surfaces */
-    --surface-3:   oklch(0.305 0.030 230); /* inset / wells */
-    --border:      oklch(0.320 0.032 230); /* hairline dividers */
-    --border-strong: oklch(0.400 0.038 230);
+  /* ── brand + surface (deep green-black — the study-nook identity) ── */
+  /* Elevation ladder is spaced wider than before: each step must be
+     visibly lighter than the last so panels read as layers, not smudges. */
+  --bg:          oklch(0.145 0.014 150); /* page ground — deep green-black */
+  --surface:     oklch(0.196 0.022 150); /* panels, bubbles, cards */
+  --surface-2:   oklch(0.252 0.026 150); /* raised: hover, top surfaces */
+  --surface-3:   oklch(0.305 0.028 150); /* inset / wells */
+  --border:      oklch(0.320 0.030 150); /* hairline dividers */
+  --border-strong: oklch(0.400 0.036 150);
 
-    /* ── ink (cool-tinted text, blue-leaning) ──────────────────── */
-    --ink:         oklch(0.945 0.008 230); /* primary text — cool white */
-    --ink-2:       oklch(0.790 0.018 235); /* secondary text — AA on all surfaces */
-    --ink-3:       oklch(0.655 0.020 235); /* tertiary / caption text */
+  /* ── ink (warm-tinted text, green-leaning) ─────────────────── */
+  --ink:         oklch(0.945 0.010 145); /* primary text — warm white */
+  --ink-2:       oklch(0.790 0.020 148); /* secondary text — AA on all surfaces */
+  --ink-3:       oklch(0.655 0.022 150); /* tertiary / caption text */
 
-    /* ── brand + semantics ─────────────────────────────────────── */
-    /* Brand teal-cyan (logo disc/waveform hue): vivid, not washed-out.
-       Amber stays VOICE-ONLY: mic, active voice states, the lamp accent. */
-    --brand:       oklch(0.780 0.130 210); /* primary action, active, focus */
-    --brand-hover: oklch(0.830 0.120 210);
-    --brand-ink:   oklch(0.160 0.040 230); /* text on brand fills */
+  /* ── brand + semantics ─────────────────────────────────────── */
+  /* Brand mint-green (the logo's check tile / orbit swoosh — NOT the
+     edtech blue-teal reflex). Amber stays VOICE-ONLY: mic, active voice
+     states, the lamp accent. Purple = info (the logo's book tile). */
+  --brand:       oklch(0.780 0.150 162); /* primary action, active, focus */
+  --brand-hover: oklch(0.830 0.140 162);
+  --brand-ink:   oklch(0.160 0.035 155); /* text on brand fills */
 
-    --lamp:        oklch(0.830 0.140 80);  /* warm amber accent — voice! */
-    --lamp-ink:    oklch(0.200 0.040 75);  /* text on lamp fills */
-    --lamp-soft:   oklch(0.32 0.055 80);   /* glow wash for active mic */
+  --lamp:        oklch(0.830 0.140 80);  /* warm amber accent — voice! */
+  --lamp-ink:    oklch(0.200 0.040 75);  /* text on lamp fills */
+  --lamp-soft:   oklch(0.32 0.055 80);   /* glow wash for active mic */
 
-    --success:     oklch(0.780 0.150 165); /* logo's mint-green check tile */
-    --warning:     oklch(0.820 0.140 80);
-    --danger:      oklch(0.700 0.170 25);
-    --danger-soft: oklch(0.32 0.080 25);
-    --info:        oklch(0.750 0.100 210);
+  --success:     oklch(0.780 0.150 162); /* same mint family as brand */
+  --warning:     oklch(0.820 0.140 80);
+  --danger:      oklch(0.700 0.170 25);
+  --danger-soft: oklch(0.32 0.080 25);
+  --info:        oklch(0.720 0.120 300); /* logo's violet book tile */
 
   /* ── semantics cast ─────────────────────────────────────────── */
   --on-surface:   var(--ink);
@@ -1234,7 +1236,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .landing-logo-planet::after {
   content: ""; position: absolute; inset: 0;
-  background: radial-gradient(circle at 50% 42%, transparent 55%, oklch(0.145 0.016 230 / 0.40) 100%);
+  background: radial-gradient(circle at 50% 42%, transparent 55%, color-mix(in oklab, var(--bg) 60%, transparent) 100%);
   pointer-events: none;
 }
 .landing-planet-caption {
