@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Explanatory first-paint landing: names what Tutorium does in user terms
 // (study packs, two-way voice, Say-It-Back scoring, review queue) so an empty
 // chat teaches the product instead of showing two buttons and a hunch.
+// 3D set-piece: one CSS-3D card stack with pointer-tilt parallax, static by
+// default, gently floating, flat under prefers-reduced-motion.
 
 const TRIES = ["Photosynthesis for USMLE", "Spanish travel phrases", "Rust ownership"];
 
@@ -70,6 +72,80 @@ function FeatureIcon({ children, tone }: { children: React.ReactNode; tone: "bra
   );
 }
 
+// The 3D set-piece: three stacked study cards + a scored chip, tilting toward
+// the pointer. Decorative only — aria-hidden, no pointer events of its own.
+function LandingScene() {
+  const sceneRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sceneRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let raf = 0;
+    const onMove = (e: PointerEvent) => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const r = el.getBoundingClientRect();
+        const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
+        const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
+        el.style.setProperty("--tilt-x", `${(-dy * 10).toFixed(2)}deg`);
+        el.style.setProperty("--tilt-y", `${(dx * 14).toFixed(2)}deg`);
+      });
+    };
+    const onLeave = () => {
+      el.style.setProperty("--tilt-x", "0deg");
+      el.style.setProperty("--tilt-y", "0deg");
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerleave", onLeave);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerleave", onLeave);
+    };
+  }, []);
+
+  return (
+    <div className="landing-scene-frame" aria-hidden>
+      <div className="landing-scene-glow" />
+      <div className="landing-scene" ref={sceneRef}>
+        <div className="scene-card scene-card--back">
+          <span className="scene-card-title">Photosynthesis — Quiz</span>
+          <span className="scene-line" style={{ width: "82%" }} />
+          <span className="scene-line" style={{ width: "64%" }} />
+          <span className="scene-line" style={{ width: "71%" }} />
+          <span className="scene-choices">
+            <span className="scene-choice scene-choice--wrong">Stroma</span>
+            <span className="scene-choice scene-choice--right">Thylakoid membrane</span>
+          </span>
+        </div>
+        <div className="scene-card scene-card--mid">
+          <span className="scene-card-tag">Flashcard 4 of 12</span>
+          <span className="scene-card-title">Where does the light reaction happen?</span>
+          <span className="scene-flip">tap to flip</span>
+        </div>
+        <div className="scene-card scene-card--front">
+          <span className="scene-card-tag">Say-It-Back</span>
+          <span className="scene-chip-row">
+            <span className="scene-chip scene-chip--hit">thylakoid</span>
+            <span className="scene-chip scene-chip--hit">grana</span>
+            <span className="scene-chip scene-chip--miss">photolysis</span>
+          </span>
+          <span className="scene-score">82<small>/100</small></span>
+        </div>
+        <div className="scene-orbit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <path d="M12 19v4" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LandingEmptyState({ onStart }: { onStart: (domain: string) => void }) {
   const [value, setValue] = useState("");
   const [starting, setStarting] = useState(false);
@@ -82,47 +158,48 @@ export default function LandingEmptyState({ onStart }: { onStart: (domain: strin
 
   return (
     <div className="landing">
-      <div className="landing-hero">
-        <h1 className="landing-title">Tell it what you&rsquo;re learning. It does the rest.</h1>
-        <p className="landing-sub">
-          Tutorium is a talk-first tutor. It remembers what you&rsquo;ve covered, where you slipped, and the
-          terms you keep forgetting — then drills you on exactly that.
-        </p>
-      </div>
-
-      <div>
-        <p className="landing-caption" id="landing-tries-label">Start with one</p>
-        <div className="landing-tries" role="group" aria-labelledby="landing-tries-label">
-          {TRIES.map((t) => (
-            <button key={t} type="button" className="landing-try" onClick={() => begin(t)} title={`Start a session on \u201c${t}\u201d`}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden>
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              {t}
+      <div className="landing-top">
+        <div className="landing-hero">
+          <h1 className="landing-title">Tell it what you&rsquo;re learning. It does the rest.</h1>
+          <p className="landing-sub">
+            Tutorium is a talk-first tutor. It remembers what you&rsquo;ve covered, where you slipped, and the
+            terms you keep forgetting — then drills you on exactly that.
+          </p>
+          <div>
+            <p className="landing-caption" id="landing-tries-label">Start with one</p>
+            <div className="landing-tries" role="group" aria-labelledby="landing-tries-label">
+              {TRIES.map((t) => (
+                <button key={t} type="button" className="landing-try" onClick={() => begin(t)} title={`Start a session on \u201c${t}\u201d`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" aria-hidden>
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <form
+            className="landing-start"
+            onSubmit={(e) => {
+              e.preventDefault();
+              begin(value.trim());
+            }}
+          >
+            <input
+              className="landing-input"
+              aria-label="What are you learning?"
+              placeholder="Photosynthesis for USMLE · Spanish travel phrases · Rust ownership"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <button type="submit" className="btn btn-primary landing-start-btn" disabled={starting}>
+              {starting ? "Starting…" : "Start session →"}
             </button>
-          ))}
+          </form>
+          <p className="landing-hint">One line is enough — a body system, a vocab list, a chapter name.</p>
         </div>
+        <LandingScene />
       </div>
-
-      <form
-        className="landing-start"
-        onSubmit={(e) => {
-          e.preventDefault();
-          begin(value.trim());
-        }}
-      >
-        <input
-          className="landing-input"
-          aria-label="What are you learning?"
-          placeholder="Photosynthesis for USMLE · Spanish travel phrases · Rust ownership"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-        <button type="submit" className="btn btn-primary landing-start-btn" disabled={starting}>
-          {starting ? "Starting…" : "Start session →"}
-        </button>
-      </form>
-      <p className="landing-hint">One line is enough — a body system, a vocab list, a chapter name.</p>
 
       <ul className="landing-grid" aria-label="What Tutorium does in a session">
         {FEATURES.map((f) => (

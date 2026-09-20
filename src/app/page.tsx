@@ -624,7 +624,7 @@ export default function Home() {
           setShowJumpToBottom(distFromBottom > 240);
         }}
       >
-        <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-6">
+        <div className={messages.length === 0 ? "mx-auto w-full max-w-5xl px-4 pb-8 pt-6" : "mx-auto w-full max-w-3xl px-4 pb-8 pt-6"}>
           {messages.length === 0 ? (
                       <LandingEmptyState onStart={startSession} />
                     ) : (
