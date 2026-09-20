@@ -73,9 +73,10 @@ function FeatureIcon({ children, tone }: { children: React.ReactNode; tone: "bra
 
 const TILT_MAX = 9; // degrees — hard clamp, screen-edge sweep stays calm
 
-// The set-piece: the animated brand logo framed as a "study planet". Its own
-// light-gray backdrop is masked by circle-cropping deep into the navy disc so
-// only the robot sphere rides on the dark UI. Tilts gently toward the pointer.
+// The set-piece: the 3D logo animation framed as a glowing brand plate. Its
+// dark navy backdrop sits a hair off the page background, so a vignette melts
+// the edges into the page — the robot, orbiting icons, and waveform read as
+// lit from within. Tilts gently toward the pointer.
 // Decorative only — aria-hidden, no pointer events of its own.
 function LandingScene() {
   const sceneRef = useRef<HTMLDivElement>(null);
@@ -119,7 +120,7 @@ function LandingScene() {
         <div className="landing-logo-planet">
           <video
             className="landing-logo-video"
-            src="/tutorium-logo.mp4"
+            src="/tutorium-logo-3d.mp4"
             autoPlay
             loop
             muted
