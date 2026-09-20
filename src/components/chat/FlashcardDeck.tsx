@@ -50,6 +50,7 @@ export default function FlashcardDeck({ cards, theme }: Props) {
         <span className={`flashcard-face flashcard-face--back ${!flipped ? "flashcard-face--hidden" : ""}`}>
           <span className="flashcard-tag flashcard-tag--back">{scratch ? "Scratch to reveal" : "Answer"}</span>
           <span className="flashcard-text">{veil && !flipped ? "••••••••" : card.back}</span>
+          {card.detail ? <span className="flashcard-detail">{card.detail}</span> : null}
         </span>
         <span className="flashcard-hint" aria-hidden>{scratch ? "hold to scratch" : "tap to flip"}</span>
       </button>

@@ -828,6 +828,17 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: var(--text-sm); color: var(--ink-2); line-height: 1.5;
   margin-bottom: var(--space-sm);
 }
+.quiz-hint-note {
+  font-size: var(--text-sm); color: var(--ink-3); line-height: 1.5;
+  margin-bottom: var(--space-sm); padding-left: var(--space-sm);
+}
+.flashcard-detail {
+  display: block;
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm); color: var(--ink-2); line-height: 1.55;
+}
 .quiz-meter {
   height: 6px; background: var(--surface-2);
   border-radius: 3px; overflow: hidden;

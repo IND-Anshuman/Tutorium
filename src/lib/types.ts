@@ -3,6 +3,7 @@
 export interface Flashcard {
   front: string;
   back: string;
+  detail?: string; // optional deeper explanation rendered under the back (additive)
 }
 
 export interface QuizItem {
@@ -11,6 +12,7 @@ export interface QuizItem {
   answer: string; // index as string "0".."3" (LLM-proof)
   explanation: string;
   trap?: string; // the common wrong turn behind the distractor ("why you fell for it")
+  hint?: string; // optional extra study pointer shown with the explanation (additive)
 }
 
 export interface StudyPack {
