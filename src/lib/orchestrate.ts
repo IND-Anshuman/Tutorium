@@ -16,7 +16,8 @@ import {
   generateSceneBrief,
 } from "./agents";
 import { pickVocabTerms } from "./vocab";
-import { parseQuizCount } from "./quizgen";
+import { parseQuizCount, planDetailBands, autoDetail, parseDetailOverride } from "./quizgen";
+import { buildSourceExcerpt } from "./agents";
 import { summarizeText, parseSummaryLength, messageCarriesText, extractBody } from "./summarizer";
 import { analyzeDocument, buildStudyPlan, parseDocIntent, type DocAnalysis } from "./docthink";
 import { designTricksterTheme, DEFAULT_THEME } from "./trickster";
@@ -179,39 +180,50 @@ if (ctx.document?.text) {
 
   switch (classification.intent) {
     case "create_study_pack": {
-      // 1) build + persist one scene brief (compacted context reused by all later agents)
-      let brief: Awaited<ReturnType<typeof generateSceneBrief>>;
-      try {
-        brief = await generateSceneBrief({
-          topic: topicTitle,
-          subject: subjectName,
-          sourceText: message,
-          sessionCtx: ctx.sessionCtx,
-          signal: ctx.signal,
-        });
-      } catch {
-        // Brief generation is the pack's foundation; without it every section
-        // would fail too. Return an honest retry reply instead of throwing so
-        // both the sync route and the background job persist a real message.
-        return {
-          reply: `I couldn't build a study pack for **${topicTitle}** this time — that's usually a temporary model hiccup. Ask me again in a moment and I'll rebuild it.`,
-          interactive: null,
-          intent: "create_study_pack",
-        };
-      }
-      ctx.saveMaterial(topicId, "brief", `${topicTitle} — Brief`, {
-        text: brief.brief,
-        keyTerms: brief.keyTerms,
-      });
+          // Source for the raw-text channel: the triggering message (pasted notes /
+          // question), else an ingested document's text when one exists. The brief
+          // stays the compact spine; the excerpt carries the specifics.
+          const docText = typeof ctx.document?.text === "string" ? ctx.document.text : "";
+          const sourceRaw = message.trim().length > docText.trim().length ? message : (docText || message);
+          const sourceExcerpt = buildSourceExcerpt(sourceRaw);
+          const detail = autoDetail(sourceRaw.length, parseDetailOverride(message));
 
-      // 2) generate pack (split, isolated sub-calls), save each section independently
-      const pack = await createStudyPack({
-        topic: topicTitle,
-        subject: subjectName,
-        brief: brief.brief,
-        sessionCtx: ctx.sessionCtx,
-        signal: ctx.signal,
-      });
+          // 1) build + persist one scene brief (compacted context reused by all later agents)
+          let brief: Awaited<ReturnType<typeof generateSceneBrief>>;
+          try {
+            brief = await generateSceneBrief({
+              topic: topicTitle,
+              subject: subjectName,
+              sourceText: message,
+              sessionCtx: ctx.sessionCtx,
+              signal: ctx.signal,
+            });
+          } catch {
+            // Brief generation is the pack's foundation; without it every section
+            // would fail too. Return an honest retry reply instead of throwing so
+            // both the sync route and the background job persist a real message.
+            return {
+              reply: `I couldn't build a study pack for **${topicTitle}** this time — that's usually a temporary model hiccup. Ask me again in a moment and I'll rebuild it.`,
+              interactive: null,
+              intent: "create_study_pack",
+            };
+          }
+          ctx.saveMaterial(topicId, "brief", `${topicTitle} — Brief`, {
+            text: brief.brief,
+            keyTerms: brief.keyTerms,
+            detail,
+          });
+
+          // 2) generate pack (split, isolated sub-calls), save each section independently
+          const pack = await createStudyPack({
+            topic: topicTitle,
+            subject: subjectName,
+            brief: brief.brief,
+            sourceExcerpt,
+            detail,
+            sessionCtx: ctx.sessionCtx,
+            signal: ctx.signal,
+          });
       if (pack.clean_notes) ctx.saveMaterial(topicId, "clean_notes", `${topicTitle} — Clean Notes`, { text: pack.clean_notes });
       if (pack.reviewer) ctx.saveMaterial(topicId, "reviewer", `${topicTitle} — Reviewer`, { text: pack.reviewer });
       if (pack.flashcards?.length) ctx.saveMaterial(topicId, "flashcards", `${topicTitle} — Flashcards`, { cards: pack.flashcards });
