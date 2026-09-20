@@ -73,8 +73,10 @@ function FeatureIcon({ children, tone }: { children: React.ReactNode; tone: "bra
 
 const TILT_MAX = 9; // degrees — hard clamp, screen-edge sweep stays calm
 
-// The 3D set-piece: three stacked study cards + a voice orb, tilting toward the
-// pointer. Decorative only — aria-hidden, no pointer events of its own.
+// The set-piece: the animated brand logo framed as a "study planet". Its own
+// light-gray backdrop is masked by circle-cropping deep into the navy disc so
+// only the robot sphere rides on the dark UI. Tilts gently toward the pointer.
+// Decorative only — aria-hidden, no pointer events of its own.
 function LandingScene() {
   const sceneRef = useRef<HTMLDivElement>(null);
 
@@ -114,37 +116,18 @@ function LandingScene() {
     <div className="landing-scene-frame" aria-hidden>
       <div className="landing-scene-glow" />
       <div className="landing-scene" ref={sceneRef}>
-        <div className="scene-card scene-card--back">
-          <span className="scene-card-title">Photosynthesis — Quiz</span>
-          <span className="scene-line" style={{ width: "82%" }} />
-          <span className="scene-line" style={{ width: "64%" }} />
-          <span className="scene-line" style={{ width: "71%" }} />
-          <span className="scene-choices">
-            <span className="scene-choice scene-choice--wrong">Stroma</span>
-            <span className="scene-choice scene-choice--right">Thylakoid membrane</span>
-          </span>
+        <div className="landing-logo-planet">
+          <video
+            className="landing-logo-video"
+            src="/tutorium-logo.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="auto"
+          />
         </div>
-        <div className="scene-card scene-card--mid">
-          <span className="scene-card-tag">Flashcard 4 of 12</span>
-          <span className="scene-card-title">Where does the light reaction happen?</span>
-          <span className="scene-flip">tap to flip</span>
-        </div>
-        <div className="scene-card scene-card--front">
-          <span className="scene-card-tag">Say-It-Back</span>
-          <span className="scene-chip-row">
-            <span className="scene-chip scene-chip--hit">thylakoid</span>
-            <span className="scene-chip scene-chip--hit">grana</span>
-            <span className="scene-chip scene-chip--miss">photolysis</span>
-          </span>
-          <span className="scene-score">82<small>/100</small></span>
-        </div>
-        <div className="scene-orbit">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <path d="M12 19v4" />
-          </svg>
-        </div>
+        <span className="landing-planet-caption">Learn • Practice • Grow — by voice</span>
       </div>
     </div>
   );
@@ -208,7 +191,7 @@ export default function LandingEmptyState() {
           <line x1="16" y1="17" x2="8" y2="17" />
         </svg>
         <span>
-          Have notes already? Attach a PDF or paste messy text — even scanned pages — and Tutorium reads
+          Have notes already? Attach a PDF, Word doc, or paste messy text — even scanned pages — and Tutorium reads
           them before you say a word. The paperclip sits next to the message box below.
         </span>
       </p>

@@ -43,8 +43,10 @@ export default function LibraryPage() {
       <header className="sticky top-0 z-[40] border-b" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 88%, transparent)", backdropFilter: "blur(12px)" }}>
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-3 no-underline" style={{ color: "inherit" }}>
-            <span className="brand-mark" aria-hidden>T</span>
-            <h1 className="text-lg font-bold tracking-tight">Library</h1>
+            <span className="brand-mark brand-mark--img" aria-hidden>
+                          <img src="/logo.png" alt="" width={30} height={30} />
+                        </span>
+                        <h1 className="text-lg font-bold tracking-tight">Library</h1>
           </Link>
           <Link href="/" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>
             ← Back to chat

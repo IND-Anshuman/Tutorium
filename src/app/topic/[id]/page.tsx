@@ -89,8 +89,10 @@ export default function TopicPage({ params }: { params: { id: string } }) {
       <header className="sticky top-0 z-[40] border-b" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 88%, transparent)", backdropFilter: "blur(12px)" }}>
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
           <Link href="/library" className="flex items-center gap-3 no-underline" style={{ color: "inherit" }}>
-            <span className="brand-mark" aria-hidden>T</span>
-            <div className="leading-tight">
+            <span className="brand-mark brand-mark--img" aria-hidden>
+                          <img src="/logo.png" alt="" width={30} height={30} />
+                        </span>
+                        <div className="leading-tight">
               <h1 className="text-base font-bold tracking-tight">{topic.title}</h1>
               <p className="text-[11px]" style={{ color: "var(--ink-3)" }}>
                 {subject?.name || "General"}{topic.subcategory && topic.subcategory !== "General" ? ` · ${topic.subcategory}` : ""}

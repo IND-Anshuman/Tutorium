@@ -4,49 +4,49 @@
 
 /*
   Tutorium — design system
-  Aesthetic: "Late-night study nook" — warm lamp-glow amber against velvety
-  green-black. Calm, focused, voice-forward. Distinctive (never the generic
-  blue/purple AI palette). Product register: design serves the task.
+  Aesthetic: "Night library" — teal-cyan glow against deep navy-black, the
+    palette of the Tutorium robot logo (navy disc, cyan waveform, mint orbit).
+    Calm, focused, voice-forward (amber stays voice-only). Product register:
+    design serves the task.
 
-  Palette authored in OKLCH for perceptual consistency. Anchored on the brand
-  green seed (oklch 0.750 0.090 140); warm amber is the lamp/voice accent.
+  Palette authored in OKLCH for perceptual consistency. Anchored on the
+    logo's teal-cyan seed; warm amber is the lamp/voice accent.
 */
 
 :root {
   color-scheme: dark;
 
-  /* ── brand + surface (green-black) ─────────────────────────── */
-  /* Elevation ladder is spaced wider than before: each step must be
-     visibly lighter than the last so panels read as layers, not smudges. */
-  --bg:          oklch(0.145 0.014 150); /* page ground — deep green-black */
-  --surface:     oklch(0.196 0.022 150); /* panels, bubbles, cards */
-  --surface-2:   oklch(0.252 0.026 150); /* raised: hover, top surfaces */
-  --surface-3:   oklch(0.305 0.028 150); /* inset / wells */
-  --border:      oklch(0.320 0.030 150); /* hairline dividers */
-  --border-strong: oklch(0.400 0.036 150);
+  /* ── brand + surface (teal-leaning navy-black, graded to the logo) ── */
+    /* Elevation ladder is spaced wider than before: each step must be
+       visibly lighter than the last so panels read as layers, not smudges. */
+    --bg:          oklch(0.145 0.016 230); /* page ground — deep navy-black */
+    --surface:     oklch(0.196 0.024 230); /* panels, bubbles, cards */
+    --surface-2:   oklch(0.252 0.028 230); /* raised: hover, top surfaces */
+    --surface-3:   oklch(0.305 0.030 230); /* inset / wells */
+    --border:      oklch(0.320 0.032 230); /* hairline dividers */
+    --border-strong: oklch(0.400 0.038 230);
 
-  /* ── ink (warm-tinted text, green-leaning) ─────────────────── */
-  --ink:         oklch(0.945 0.010 145); /* primary text — warm white */
-  --ink-2:       oklch(0.790 0.020 148); /* secondary text — AA on all surfaces */
-  --ink-3:       oklch(0.655 0.022 150); /* tertiary / caption text */
+    /* ── ink (cool-tinted text, blue-leaning) ──────────────────── */
+    --ink:         oklch(0.945 0.008 230); /* primary text — cool white */
+    --ink-2:       oklch(0.790 0.018 235); /* secondary text — AA on all surfaces */
+    --ink-3:       oklch(0.655 0.020 235); /* tertiary / caption text */
 
-  /* ── brand + semantics ─────────────────────────────────────── */
-  /* Brand green: chroma raised 0.120 → 0.170 — vivid spring green,
-     no longer washed-out mint. Amber is VOICE-ONLY: mic, active voice
-     states, the lamp accent. It no longer decorates anything else. */
-  --brand:       oklch(0.760 0.170 150); /* primary action, active, focus */
-  --brand-hover: oklch(0.810 0.160 150);
-  --brand-ink:   oklch(0.155 0.030 150); /* text on brand fills */
+    /* ── brand + semantics ─────────────────────────────────────── */
+    /* Brand teal-cyan (logo disc/waveform hue): vivid, not washed-out.
+       Amber stays VOICE-ONLY: mic, active voice states, the lamp accent. */
+    --brand:       oklch(0.780 0.130 210); /* primary action, active, focus */
+    --brand-hover: oklch(0.830 0.120 210);
+    --brand-ink:   oklch(0.160 0.040 230); /* text on brand fills */
 
-  --lamp:        oklch(0.830 0.140 80);  /* warm lamp-glow accent — voice! */
-  --lamp-ink:    oklch(0.200 0.040 75);  /* text on lamp fills */
-  --lamp-soft:   oklch(0.32 0.055 80);   /* glow wash for active mic */
+    --lamp:        oklch(0.830 0.140 80);  /* warm amber accent — voice! */
+    --lamp-ink:    oklch(0.200 0.040 75);  /* text on lamp fills */
+    --lamp-soft:   oklch(0.32 0.055 80);   /* glow wash for active mic */
 
-  --success:     oklch(0.780 0.150 155);
-  --warning:     oklch(0.820 0.140 80);
-  --danger:      oklch(0.700 0.170 25);
-  --danger-soft: oklch(0.32 0.080 25);
-  --info:        oklch(0.750 0.100 230);
+    --success:     oklch(0.780 0.150 165); /* logo's mint-green check tile */
+    --warning:     oklch(0.820 0.140 80);
+    --danger:      oklch(0.700 0.170 25);
+    --danger-soft: oklch(0.32 0.080 25);
+    --info:        oklch(0.750 0.100 210);
 
   /* ── semantics cast ─────────────────────────────────────────── */
   --on-surface:   var(--ink);
@@ -1059,13 +1059,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-radius: var(--radius-md);
 }
 
-/* ── brand mark (logo square in header) ─────────────────────── */
+/* ── brand mark (logo in header) ────────────────────────────── */
 .brand-mark {
   display: inline-flex; width: 32px; height: 32px;
   align-items: center; justify-content: center;
   border-radius: 9px;
   font-weight: 800; font-size: var(--text-md);
-  background: linear-gradient(135deg, var(--brand) 0%, var(--lamp) 100%);
+  background: linear-gradient(135deg, var(--brand) 0%, var(--info) 100%);
   color: var(--brand-ink);
   box-shadow: 0 6px 14px -6px color-mix(in oklab, var(--brand) 80%, transparent);
   position: relative;
@@ -1075,6 +1075,17 @@ button, input, textarea, select { font: inherit; color: inherit; }
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--lamp);
   box-shadow: 0 0 0 3px var(--bg);
+}
+/* PNG logo variant: white chip so the cutout's white/transparent ground
+   reads as a glossy tile instead of a gray smudge on the dark header. */
+.brand-mark--img {
+  background: #fff;
+  overflow: hidden;
+}
+.brand-mark--img::after { content: none; }
+.brand-mark--img img {
+  display: block; width: 26px; height: 26px; margin: auto;
+  object-fit: cover; border-radius: 6px;
 }
 
 /* ── landing (first-paint empty state) — explains the product ─── */
@@ -1200,76 +1211,44 @@ button, input, textarea, select { font: inherit; color: inherit; }
   transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
   transition: transform 180ms var(--ease-out);
 }
-.scene-card {
-  position: absolute;
-  padding: var(--space-md);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: linear-gradient(160deg, var(--surface-2), var(--surface));
-  box-shadow: var(--shadow-md);
-  display: flex; flex-direction: column; gap: var(--space-2xs);
+/* Brand planet: circle-cropped frame that masks the video's light-gray
+   studio backdrop — we zoom past it so only the navy disc reads as the
+   "planet", floating on the dark page like the logo's own orbit ring. */
+.landing-logo-planet {
+  position: relative;
+  width: min(320px, 100%);
+  aspect-ratio: 1;
+  margin-inline: auto;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow:
+    var(--shadow-lg),
+    0 0 60px -12px color-mix(in oklab, var(--brand) 34%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--ink) 8%, transparent);
 }
-.scene-card--back {
-  top: 0; left: 8%; width: 88%;
-  transform: translateZ(-72px) rotateX(5deg);
-  opacity: 0.82;
-  animation: scene-float 9s ease-in-out infinite;
+.landing-logo-video {
+  position: absolute; left: 50%; top: 47%;
+  width: 152%; transform: translate(-50%, -50%);
+  object-fit: cover;
 }
-.scene-card--mid {
-  top: 92px; left: 0; width: 84%;
-  transform: translateZ(-8px);
-  animation: scene-float 8s ease-in-out infinite;
-  animation-delay: -2.5s;
+.landing-logo-planet::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle at 30% 22%, transparent 55%, oklch(0.145 0.016 230 / 0.30) 100%);
+  pointer-events: none;
 }
-.scene-card--front {
-  top: 212px; left: 15%; width: 78%;
-  transform: translateZ(56px);
-  box-shadow: var(--shadow-lg);
-  animation: scene-float 7s ease-in-out infinite;
-  animation-delay: -4.5s;
+.landing-planet-caption {
+  display: block; text-align: center; margin-top: var(--space-sm);
+  font-size: var(--text-xs); font-weight: 600;
+  letter-spacing: 0.02em; color: var(--ink-3);
 }
-@keyframes scene-float {
-  0%, 100% { translate: 0 0; }
-  50% { translate: 0 -7px; }
-}
-.scene-card-tag { font-size: 0.6875rem; font-weight: 600; color: var(--ink-3); }
-.scene-card-title { font-size: var(--text-sm); font-weight: 600; color: var(--ink); line-height: var(--leading-snug); }
-.scene-line { display: block; height: 7px; border-radius: var(--radius-full); background: var(--surface-3); }
-.scene-choices { display: flex; gap: var(--space-2xs); margin-top: 2px; }
-.scene-choice {
-  font-size: 0.6875rem; font-weight: 600; padding: 3px 9px;
-  border-radius: var(--radius-full);
-}
-.scene-choice--wrong { background: color-mix(in oklab, var(--danger) 18%, transparent); color: var(--danger); text-decoration: line-through; }
-.scene-choice--right { background: color-mix(in oklab, var(--success) 18%, transparent); color: var(--success); }
-.scene-flip { font-size: 0.6875rem; color: var(--ink-3); margin-top: 2px; }
-.scene-chip-row { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
-.scene-chip {
-  font-size: 0.6875rem; font-weight: 600; padding: 3px 9px;
-  border-radius: var(--radius-full); font-family: var(--font-mono);
-}
-.scene-chip--hit { background: color-mix(in oklab, var(--success) 18%, transparent); color: var(--success); }
-.scene-chip--miss { background: color-mix(in oklab, var(--danger) 18%, transparent); color: var(--danger); }
-.scene-score {
-  margin-top: var(--space-2xs);
-  font-size: 1.75rem; font-weight: 700; line-height: 1;
-  color: var(--brand); font-variant-numeric: tabular-nums;
-}
-.scene-score small { font-size: 0.8125rem; font-weight: 600; color: var(--ink-3); margin-left: 2px; }
-.scene-orbit {
-  position: absolute; top: -10px; right: -4px;
-  width: 42px; height: 42px; border-radius: var(--radius-full);
-  display: grid; place-items: center;
-  background: var(--lamp); color: var(--lamp-ink);
-  box-shadow: var(--shadow-sm), 0 0 26px color-mix(in oklab, var(--lamp) 32%, transparent);
-  transform: translateZ(72px);
-  animation: scene-float 6s ease-in-out infinite;
-  animation-delay: -1.2s;
+@media (hover: hover) {
+  .landing-scene:hover .landing-logo-planet { scale: 1.03; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .scene-card--back, .scene-card--mid, .scene-card--front, .scene-orbit { animation: none; }
   .landing-scene { transition: none; }
   .landing-bubble { animation: none; }
+  .landing-logo-video { animation: none; }
+  .landing-scene:hover .landing-logo-planet { scale: 1; }
 }
 @media (min-width: 900px) { .rail-backdrop { display: none; } }
 

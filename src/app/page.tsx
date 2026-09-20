@@ -174,7 +174,7 @@ export default function Home() {
   );
 
   // ---------- main send ----------
-  // ---- document attach (PDF/TXT) ----
+  // ---- document attach (PDF/DOCX/TXT/MD) ----
   const [pendingDoc, setPendingDoc] = useState<{ text: string; filename: string; pages: number } | null>(null);
   const [docBusy, setDocBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -543,8 +543,10 @@ export default function Home() {
               <span className="rail-toggle-pulse" aria-hidden />
             </button>
             <div className="flex items-center gap-2">
-              <span className="brand-mark" aria-hidden>T</span>
-              <span className="text-lg font-bold tracking-tight">Tutorium</span>
+              <span className="brand-mark brand-mark--img" aria-hidden>
+                              <img src="/logo.png" alt="" width={30} height={30} />
+                            </span>
+                            <span className="text-lg font-bold tracking-tight">Tutorium</span>
             </div>
             {(domain || topicTitle) && (
               <span className="domain-header" title={domain || topicTitle}>
@@ -694,7 +696,7 @@ export default function Home() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.txt,application/pdf,text/plain"
+            accept=".pdf,.docx,.txt,.md,application/pdf,text/plain,text/markdown"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -705,8 +707,8 @@ export default function Home() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={busy || docBusy}
-            aria-label="Attach a PDF or text document"
-            title="Attach a PDF or text document"
+            aria-label="Attach a document (PDF, Word, TXT, Markdown)"
+            title="Attach a document (PDF, Word, TXT, Markdown)"
             className="icon-btn"
             style={{ background: pendingDoc ? "var(--lamp)" : "var(--surface)", color: pendingDoc ? "var(--on-lamp)" : "var(--ink-2)" }}
           >
