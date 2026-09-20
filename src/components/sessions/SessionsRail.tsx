@@ -27,6 +27,7 @@ export default function SessionsRail({
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,15 +48,19 @@ export default function SessionsRail({
 
   const startNew = useCallback(async () => {
     setCreating(true);
+    setError(null);
     try {
       const r = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: "demo-user", domain: "" }),
       });
+      if (!r.ok) throw new Error(`couldn't start a session (status ${r.status})`);
       const d = await r.json();
       // Navigate to the new session — preserves "start fresh" UX.
       window.location.href = `/?session=${d.id}`;
+    } catch (e) {
+      setError((e as Error).message || "Couldn't start a session — check your connection and try again.");
     } finally {
       setCreating(false);
     }
@@ -81,6 +86,11 @@ export default function SessionsRail({
       >
         {creating ? "Creating…" : "+ New session"}
       </button>
+      {error && (
+        <div role="alert" style={{ margin: "0 var(--space-md) var(--space-sm)", padding: "8px 10px", borderRadius: "var(--radius-sm)", background: "var(--danger-soft)", border: "1px solid color-mix(in oklab, var(--danger) 50%, transparent)", color: "var(--danger)", fontSize: "var(--text-xs)", lineHeight: 1.4 }}>
+          {error}
+        </div>
+      )}
       <div className="rail-list" role="list">
         {loading && sessions.length === 0 && (
           <div className="rail-empty">Loading…</div>
