@@ -1076,16 +1076,17 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: var(--lamp);
   box-shadow: 0 0 0 3px var(--bg);
 }
-/* PNG logo variant: white chip so the cutout's white/transparent ground
-   reads as a glossy tile instead of a gray smudge on the dark header. */
+/* PNG logo variant: the dark emblem carries its own navy-black ground, so it
+   sits straight on the header — a hairline ring keeps the edge readable. */
 .brand-mark--img {
-  background: #fff;
+  background: transparent;
+  box-shadow: 0 0 0 1px var(--border);
   overflow: hidden;
 }
 .brand-mark--img::after { content: none; }
 .brand-mark--img img {
-  display: block; width: 26px; height: 26px; margin: auto;
-  object-fit: cover; border-radius: 6px;
+  display: block; width: 32px; height: 32px; margin: auto;
+  object-fit: cover;
 }
 
 /* ── landing (first-paint empty state) — explains the product ─── */
@@ -1217,7 +1218,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
    lit from within, no visible video rectangle. */
 .landing-logo-planet {
   position: relative;
-  width: min(480px, 100%);
+  width: min(560px, 100%);
   aspect-ratio: 16 / 10;
   margin-inline: auto;
   border-radius: var(--radius-lg);

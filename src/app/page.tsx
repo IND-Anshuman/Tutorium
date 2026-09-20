@@ -544,7 +544,7 @@ export default function Home() {
             </button>
             <div className="flex items-center gap-2">
               <span className="brand-mark brand-mark--img" aria-hidden>
-                              <img src="/logo.png" alt="" width={30} height={30} />
+                              <img src="/logo-dark.png" alt="" width={32} height={32} />
                             </span>
                             <span className="text-lg font-bold tracking-tight">Tutorium</span>
             </div>

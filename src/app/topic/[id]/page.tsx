@@ -90,7 +90,7 @@ export default function TopicPage({ params }: { params: { id: string } }) {
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
           <Link href="/library" className="flex items-center gap-3 no-underline" style={{ color: "inherit" }}>
             <span className="brand-mark brand-mark--img" aria-hidden>
-                          <img src="/logo.png" alt="" width={30} height={30} />
+                          <img src="/logo-dark.png" alt="" width={32} height={32} />
                         </span>
                         <div className="leading-tight">
               <h1 className="text-base font-bold tracking-tight">{topic.title}</h1>
