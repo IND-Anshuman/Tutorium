@@ -120,7 +120,7 @@ function LandingScene() {
         <div className="landing-logo-planet">
           <video
             className="landing-logo-video"
-            src="/tutorium-logo-3d.mp4"
+            src="/tutorium-logo-3d-cropped.mp4"
             autoPlay
             loop
             muted
