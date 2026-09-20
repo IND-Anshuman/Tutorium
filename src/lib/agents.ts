@@ -195,17 +195,27 @@ export async function packAssess(args: {
       sessionCtx: args.sessionCtx, signal: args.signal,
     });
     allCards.push(...r.flashcards);
-    allQuiz.push(...r.quiz);
-    stems = allQuiz.map((q) => q.question);
-    if (allCards.length >= cardCount && allQuiz.length >= quizCount) break;
-  }
-  return { flashcards: dedupeByStem(allCards.map((c) => ({ ...c, question: c.front }))).map(({ front, back }) => ({ front, back })), quiz: dedupeByStem(allQuiz).slice(0, quizCount) };
-}
+        allQuiz.push(...r.quiz);
+        stems = allQuiz.map((q) => q.question);
+        if (allCards.length >= cardCount && allQuiz.length >= quizCount) break;
+      }
+      const deduped = {
+        flashcards: dedupeByStem(allCards.map((c) => ({ ...c, question: c.front }))).map(({ front, back }) => ({ front, back })),
+        quiz: dedupeByStem(allQuiz).slice(0, quizCount),
+      };
+      // Salvage pass: deepen thin items instead of dropping them (fault-isolated).
+      const enriched = await enrichThinItems({
+        topic: args.topic, brief: args.brief,
+        flashcards: deduped.flashcards, quiz: deduped.quiz,
+        sessionCtx: args.sessionCtx, signal: args.signal,
+      });
+      return enriched;
+      }
 
-async function packStory(args: {
-  topic: string; brief: string; sourceExcerpt?: string; detail?: DetailLevel;
-  sessionCtx?: SessionContext | null; signal?: AbortSignal;
-}): Promise<string> {
+      async function packStory(args: {
+              topic: string; brief: string; sourceExcerpt?: string; detail?: DetailLevel;
+              sessionCtx?: SessionContext | null; signal?: AbortSignal;
+            }): Promise<string> {
   const detail = args.detail ?? "standard";
   const sourceBlock = args.sourceExcerpt
     ? `\nSOURCE EXCERPT (authoritative — ground the story's details in it):\n"""${args.sourceExcerpt}"""`
@@ -258,6 +268,67 @@ export async function createStudyPack(args: {
 export async function createFlashcardsOnly(args: { topic: string; brief: string; cardCount?: number; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<Flashcard[]> {
   const { flashcards } = await packAssess({ topic: args.topic, brief: args.brief, cardCount: args.cardCount ?? 6, sessionCtx: args.sessionCtx, signal: args.signal });
   return flashcards;
+}
+
+// ---------- enrich-in-place (thin-item salvage) ----------
+// Floors below: an item shorter than these reads as a bare term, not an
+// explanation. The old behaviour silently DROPPED such items; this pass instead
+// spends ONE follow-up call asking the model to deepen its own thin output and
+// merges the results back by index. If the call fails, originals survive — a
+// thin card beats a missing card.
+export const THIN_CARD_BACK = 40;   // chars
+export const THIN_EXPLANATION = 60; // chars
+
+interface EnrichedItem { kind: "card" | "quiz"; index: number; back?: string; explanation?: string }
+
+export async function enrichThinItems(args: {
+  topic: string;
+  brief: string;
+  flashcards: Flashcard[];
+  quiz: QuizItem[];
+  sessionCtx?: SessionContext | null;
+  signal?: AbortSignal;
+}): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
+  const thinCards = args.flashcards
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => (c.back || "").trim().length < THIN_CARD_BACK);
+  const thinQuiz = args.quiz
+    .map((q, i) => ({ q, i }))
+    .filter(({ q }) => (q.explanation || "").trim().length < THIN_EXPLANATION);
+  if (!thinCards.length && !thinQuiz.length) return { flashcards: args.flashcards, quiz: args.quiz };
+
+  const payload = {
+    ...(thinCards.length
+      ? { flashcards: thinCards.map(({ c, i }) => ({ index: i, front: c.front, current_back: c.back })) }
+      : {}),
+    ...(thinQuiz.length
+      ? { quiz: thinQuiz.map(({ q, i }) => ({ index: i, question: q.question, current_explanation: q.explanation })) }
+      : {}),
+  };
+  try {
+    const { data } = await llmJsonSig<{ enriched: EnrichedItem[] }>(args.signal, {
+      system: domainContextPrefix(args.sessionCtx) + `You wrote the study material below; some items came back too thin. Deepen ONLY the listed items.
+Return JSON {"enriched":[{"kind":"card","index":N,"back":"2-4 sentence explanation with mechanism + example"} ,{"kind":"quiz","index":N,"explanation":"2-3 sentences: why the answer is right and why the tempting wrong is wrong"}]}.
+Same indices as given. Do not shorten anything. No new items.`,
+      user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""\nThin items to deepen:\n${JSON.stringify(payload)}`,
+      temperature: 0.3,
+      maxTokens: 1600,
+    });
+    const flashcards = args.flashcards.map((c, i) => {
+      const e = data.enriched?.find((x) => x.kind === "card" && x.index === i);
+      return e?.back && e.back.length > (c.back || "").length ? { ...c, back: e.back } : c;
+    });
+    const quiz = args.quiz.map((q, i) => {
+      const e = data.enriched?.find((x) => x.kind === "quiz" && x.index === i);
+      return e?.explanation && e.explanation.length > (q.explanation || "").length
+        ? { ...q, explanation: e.explanation }
+        : q;
+    });
+    return { flashcards, quiz };
+  } catch (e) {
+    console.warn("enrichThinItems failed (keeping originals):", (e as Error).message);
+    return { flashcards: args.flashcards, quiz: args.quiz };
+  }
 }
 
 export async function createQuizOnly(args: { topic: string; brief: string; quiz?: QuizRequest; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<QuizItem[]> {

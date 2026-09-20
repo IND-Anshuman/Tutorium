@@ -16,12 +16,16 @@ vi.mock("./llm", () => ({
         brief: "A brief.",
         key_terms: ["term"],
         reply: "Teaching reply.",
+        enriched: [
+          { kind: "card", index: 0, back: "A long enriched explanation of the concept." },
+          { kind: "quiz", index: 0, explanation: "A long enriched explanation of the concept." },
+        ],
       },
     };
   }),
 }));
 
-import { buildSourceExcerpt, createStudyPack } from "./agents";
+import { buildSourceExcerpt, createStudyPack, enrichThinItems, THIN_CARD_BACK, THIN_EXPLANATION } from "./agents";
 
 beforeEach(() => {
   captured.length = 0;
@@ -54,6 +58,9 @@ describe("buildSourceExcerpt", () => {
 });
 
 describe("two-channel grounding", () => {
+  // The three pack sub-calls, identified by system prompt (robust to the extra
+  // enrich pass that may add a 4th call).
+  const packCalls = () => captured.filter((c) => /study pack core|assessment tools|memorable story/.test(c.system));
   it("passes sourceExcerpt into every pack sub-call", async () => {
     await createStudyPack({
       topic: "Photosynthesis",
@@ -61,26 +68,25 @@ describe("two-channel grounding", () => {
       brief: "A short brief.",
       sourceExcerpt: "SOURCE MARKER unique-string-12345",
     });
-    // core + assess + story = 3 calls; each user prompt must carry the source
-    expect(captured.length).toBe(3);
-    for (const c of captured) {
+    expect(packCalls().length).toBe(3);
+    for (const c of packCalls()) {
       expect(c.user).toContain("SOURCE MARKER unique-string-12345");
       expect(c.user).toContain("authoritative");
     }
   });
   it("omits the source block when no excerpt is given", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B" });
-    expect(captured.length).toBe(3);
-    for (const c of captured) expect(c.user).not.toContain("AUTHORITATIVE");
+    expect(packCalls().length).toBe(3);
+    for (const c of packCalls()) expect(c.user).not.toContain("authoritative");
   });
 });
 
 describe("detail-scaled budgets", () => {
   it("scales packCore maxTokens with detail level", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B", detail: "light" });
-    const lightCore = captured[captured.length - 3];
+    const lightCore = captured.filter((c) => c.system.includes("study pack core")).at(-1)!;
     await createStudyPack({ topic: "T", subject: "S", brief: "B", detail: "deep" });
-    const deepCore = captured[captured.length - 3];
+    const deepCore = captured.filter((c) => c.system.includes("study pack core")).at(-1)!;
     expect(lightCore.maxTokens).toBe(2000);
     expect(deepCore.maxTokens).toBe(4600);
     // deep prompt carries the completeness instruction
@@ -88,14 +94,57 @@ describe("detail-scaled budgets", () => {
   });
   it("default detail is standard", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B" });
-    const core = captured[captured.length - 3];
+    const core = captured.filter((c) => c.system.includes("study pack core")).at(-1)!;
     expect(core.maxTokens).toBe(3200);
   });
   it("assess band budget scales with detail too", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B", detail: "deep" });
-    const assess = captured[captured.length - 2];
+    const assess = captured.filter((c) => c.system.includes("assessment tools")).at(-1)!;
     // default pack = 4q/6c: (450 + 4*220 + 6*130) * 1.5 = 2214 * 1.5 ≈ 3321
     // light for the same shape: * 0.7 ≈ 1550
     expect(assess.maxTokens).toBeGreaterThan(3000);
+  });
+});
+
+describe("enrichThinItems", () => {
+  it("constants are raised above the old strip-floors", () => {
+    expect(THIN_CARD_BACK).toBeGreaterThanOrEqual(40);
+    expect(THIN_EXPLANATION).toBeGreaterThanOrEqual(60);
+  });
+  it("identifies thin items, merges enriched text back by index", async () => {
+    const cards = [
+      { front: "Q1", back: "Short." },                    // thin
+      { front: "Q2", back: "A".repeat(THIN_CARD_BACK + 10) }, // solid
+    ];
+    const quiz = [
+      { question: "W?", choices: ["a", "b", "c", "d"], answer: "0", explanation: "Tiny.", trap: "" }, // thin
+    ];
+    const r = await enrichThinItems({ topic: "T", brief: "B", flashcards: cards, quiz });
+    // one LLM call fired for the enrichment
+    expect(captured.length).toBe(1);
+    expect(captured[0].system).toMatch(/deepen|fuller/i);
+    expect(captured[0].user).toContain("Short.");       // thin item sent out
+    expect(captured[0].user).not.toContain("A".repeat(THIN_CARD_BACK + 10)); // solid not sent
+    expect(r.flashcards[0].back).toBe("A long enriched explanation of the concept.");
+    expect(r.flashcards[1].back).toBe(cards[1].back);   // solid untouched
+    expect(r.quiz[0].explanation).toBe("A long enriched explanation of the concept.");
+  });
+  it("keeps originals when the enrichment call fails (never drops items)", async () => {
+    const { llmJson } = await import("./llm");
+    vi.mocked(llmJson).mockImplementationOnce(async () => { throw new Error("provider down"); });
+    const cards = [{ front: "Q1", back: "Short." }];
+    const r = await enrichThinItems({ topic: "T", brief: "B", flashcards: cards, quiz: [] });
+    expect(r.flashcards[0].back).toBe("Short."); // original survives
+  });
+  it("no-op without thin items: zero LLM calls", async () => {
+    captured.length = 0;
+    const long = "A".repeat(THIN_CARD_BACK + 20);
+    const r = await enrichThinItems({
+      topic: "T", brief: "B",
+      flashcards: [{ front: "Q", back: long }],
+      quiz: [{ question: "W?", choices: ["a", "b", "c", "d"], answer: "0", explanation: "E".repeat(THIN_EXPLANATION + 10), trap: "" }],
+    });
+    expect(captured.length).toBe(0);
+    expect(r.flashcards[0].back).toBe(long);
   });
 });
