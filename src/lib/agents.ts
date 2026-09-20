@@ -12,13 +12,46 @@ import { llmJson } from "./llm";
 import type { Classification, StudyPack, Flashcard, QuizItem, MemoryUpdate, ChatMessage, Intent } from "./types";
 import type { SessionContext } from "./db";
 import { parseQuizCount, planQuizBands, dedupeByStem } from "./quizgen";
-import type { QuizRequest } from "./quizgen";
+import type { QuizRequest, DetailLevel } from "./quizgen";
 import { resolveNewIntentFromText } from "./enrich";
 
 // Thin wrapper so every agent call shares the same AbortSignal plumbing.
 function llmJsonSig<T>(signal: AbortSignal | undefined, args: Parameters<typeof llmJson<T>>[0]) {
   return llmJson<T>({ ...args, signal });
 }
+
+// ---------- source excerpt (two-channel grounding) ----------
+// The brief is the dense spine; the excerpt is verbatim raw source. Pack agents
+// get BOTH: the brief for shape, the excerpt for specifics (names, numbers,
+// steps, definitions) the brief compressed away. Head+tail kept when capping —
+// conclusions and definitions tend to live at the edges of real notes.
+export function buildSourceExcerpt(raw: string, cap = 4000): string {
+  const s = (raw || "").trim();
+  if (!s) return "";
+  if (s.length <= cap) return s;
+  const head = s.slice(0, Math.floor(cap * 0.65));
+  const tail = s.slice(-Math.floor(cap * 0.3));
+  return `${head}\n…\n${tail}`;
+}
+
+// Output budget + prompt intensity per detail level. "light" matches the old
+// behaviour (small pastes don't need more); "deep" costs ~2.3x but only fires
+// when the source is large or the student explicitly asked for depth.
+const DETAIL_TOKENS: Record<DetailLevel, number> = { light: 2000, standard: 3200, deep: 4600 };
+const DETAIL_NOTES_LINE: Record<DetailLevel, string> = {
+  light: "Keep notes compact: the essential spine only.",
+  standard:
+    "Write thorough notes: every major concept explained with its mechanism, a concrete example, and why it matters.",
+  deep:
+    "Write exhaustive notes: cover every concept in the source; for each, give the mechanism, a worked example, the common misconception, and how it connects to adjacent ideas. Prefer completeness over brevity.",
+};
+const DETAIL_ASSESS_LINE: Record<DetailLevel, string> = {
+  light: "Explanations: 1 sentence.",
+  standard:
+    "Explanations must teach: 2-3 sentences — what is correct and why, plus why the tempting wrong answer is wrong. Flashcard backs must be full explanatory answers: 2-4 sentences with the mechanism or reasoning, never a bare term.",
+  deep:
+    "Explanations must teach deeply: 3-4 sentences — the correct mechanism step by step, a concrete example, and exactly why each tempting wrong answer fails. Flashcard backs must be mini-lessons: 3-5 sentences with mechanism, example, and one memorable anchor.",
+};
 
 // Compact prefix injected into every agent's system prompt. Prevents the model
 // from re-deriving what's already established in the session (level, key terms,
@@ -83,20 +116,31 @@ Return JSON: {"brief": <=120 words covering only the core concepts a tutor needs
 // Each sub-call is small and isolated; orchestrate saves them incrementally so a
 // partial pack survives. All consume the compact brief, not raw notes.
 
-async function packCore(args: { topic: string; subject: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<{ clean_notes: string; reviewer: string; summary: string }> {
-  const { data } = await llmJsonSig<{ clean_notes: string; reviewer: string; summary: string }>(args.signal, {
-    system: domainContextPrefix(args.sessionCtx) + `Write a study pack core for the topic. Return JSON {"clean_notes": markdown, "reviewer": concise bullet recap, "summary": 3-4 sentences}.
+async function packCore(args: {
+  topic: string; subject: string; brief: string;
+  sourceExcerpt?: string; detail?: DetailLevel;
+  sessionCtx?: SessionContext | null; signal?: AbortSignal;
+}): Promise<{ clean_notes: string; reviewer: string; summary: string }> {
+  const detail = args.detail ?? "standard";
+  const sourceBlock = args.sourceExcerpt
+      ? `\nSOURCE EXCERPT (authoritative — from the student's actual material; mine it for specifics the brief may have compressed, never invent facts that contradict it):\n"""${args.sourceExcerpt}"""`
+      : "";
+    const { data } = await llmJsonSig<{ clean_notes: string; reviewer: string; summary: string }>(args.signal, {
+    system: domainContextPrefix(args.sessionCtx) + `Write a study pack core for the topic. Return JSON {"clean_notes": markdown, "reviewer": thorough bullet recap, "summary": 5-8 sentences}.
+${DETAIL_NOTES_LINE[detail]}
 Accurate, grade-appropriate, no filler.`,
-    user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""`,
-    maxTokens: 2000,
-  });
-  return { clean_notes: data.clean_notes || "", reviewer: data.reviewer || "", summary: data.summary || "" };
-}
+    user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""${sourceBlock}`,
+        maxTokens: DETAIL_TOKENS[detail],
+      });
+      return { clean_notes: data.clean_notes || "", reviewer: data.reviewer || "", summary: data.summary || "" };
+    }
 
 async function assessBand(args: {
   topic: string; brief: string; quizCount: number; cardCount: number; difficulty: string;
-  priorStems: string[]; sessionCtx?: SessionContext | null; signal?: AbortSignal;
+  priorStems: string[]; sourceExcerpt?: string; detail?: DetailLevel;
+  sessionCtx?: SessionContext | null; signal?: AbortSignal;
 }): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
+  const detail = args.detail ?? "standard";
   const difficultyLine =
     args.difficulty === "hard" ? "Make questions genuinely hard: require application, not recall."
     : args.difficulty === "easy" ? "Keep questions foundational and confidence-building."
@@ -105,12 +149,16 @@ async function assessBand(args: {
   const prior = args.priorStems.length
     ? `\nDo NOT repeat or reword these existing questions:\n${args.priorStems.slice(-24).map((s) => `- ${s}`).join("\n")}`
     : "";
+  const sourceBlock = args.sourceExcerpt
+    ? `\nSOURCE EXCERPT (authoritative — mine it for specifics the brief compressed; every question and card must be answerable from it):\n"""${args.sourceExcerpt}"""`
+    : "";
   const { data } = await llmJsonSig<{ flashcards: Flashcard[]; quiz: QuizItem[] }>(args.signal, {
     system: domainContextPrefix(args.sessionCtx) + `Build assessment tools for the topic. Return JSON {"flashcards":[{"front","back"}] (${args.cardCount}), "quiz":[{"question","choices":[4],"answer":"0".."3" (index of correct), "explanation", "trap"}] (${args.quizCount})}.
 answer MUST be the index string of the correct choice. Exactly ${args.quizCount} quiz items and ${args.cardCount} flashcards.
+${DETAIL_ASSESS_LINE[detail]}
 "trap" (1 sentence) names the common misconception that makes the WRONG choice tempting — shown only when the learner picks wrong. e.g. "Tempting — but that confuses the light reactions with the Calvin cycle."${prior}`,
-    user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
-    maxTokens: Math.min(6000, 450 + args.quizCount * 150 + args.cardCount * 90),
+    user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""${sourceBlock}`,
+    maxTokens: Math.min(9000, Math.round((450 + args.quizCount * 220 + args.cardCount * 130) * (detail === "light" ? 0.7 : detail === "deep" ? 1.5 : 1))),
   });
   return {
     flashcards: (data.flashcards || []).map((f) => ({ front: f.front, back: f.back })),
@@ -128,6 +176,7 @@ answer MUST be the index string of the correct choice. Exactly ${args.quizCount}
 // told about prior stems to avoid repeats. Single call when counts are small.
 export async function packAssess(args: {
   topic: string; brief: string; quiz?: QuizRequest; cardCount?: number;
+  sourceExcerpt?: string; detail?: DetailLevel;
   sessionCtx?: SessionContext | null; signal?: AbortSignal;
 }): Promise<{ flashcards: Flashcard[]; quiz: QuizItem[] }> {
   const quizCount = Math.max(4, Math.min(30, args.quiz?.count ?? 4));
@@ -142,6 +191,7 @@ export async function packAssess(args: {
     const r = await assessBand({
       topic: args.topic, brief: args.brief, quizCount: band, cardCount: cardsThisBand,
       difficulty: args.quiz?.difficulty ?? "medium", priorStems: stems,
+      sourceExcerpt: args.sourceExcerpt, detail: args.detail,
       sessionCtx: args.sessionCtx, signal: args.signal,
     });
     allCards.push(...r.flashcards);
@@ -152,11 +202,18 @@ export async function packAssess(args: {
   return { flashcards: dedupeByStem(allCards.map((c) => ({ ...c, question: c.front }))).map(({ front, back }) => ({ front, back })), quiz: dedupeByStem(allQuiz).slice(0, quizCount) };
 }
 
-async function packStory(args: { topic: string; brief: string; sessionCtx?: SessionContext | null; signal?: AbortSignal }): Promise<string> {
+async function packStory(args: {
+  topic: string; brief: string; sourceExcerpt?: string; detail?: DetailLevel;
+  sessionCtx?: SessionContext | null; signal?: AbortSignal;
+}): Promise<string> {
+  const detail = args.detail ?? "standard";
+  const sourceBlock = args.sourceExcerpt
+    ? `\nSOURCE EXCERPT (authoritative — ground the story's details in it):\n"""${args.sourceExcerpt}"""`
+    : "";
   const { data } = await llmJsonSig<{ story: string }>(args.signal, {
-    system: domainContextPrefix(args.sessionCtx) + `Write a short memorable story/analogy teaching the topic's core idea. Return JSON {"story": 6-10 sentences}. Plain text, no markdown.`,
-    user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""`,
-    maxTokens: 900,
+    system: domainContextPrefix(args.sessionCtx) + `Write a short memorable story/analogy teaching the topic's core idea. Return JSON {"story": 8-14 sentences}. Plain text, no markdown. Extend the analogy at the end: map each story element back to the real concept it stands for.${detail === "deep" ? " Make it vivid and layered — the story should survive being retold from memory." : ""}`,
+    user: `Topic: ${args.topic}\nBrief:\n"""${args.brief}"""${sourceBlock}`,
+    maxTokens: detail === "light" ? 900 : 1400,
   });
   return data.story || "";
 }
@@ -165,6 +222,8 @@ export async function createStudyPack(args: {
   topic: string;
   subject: string;
   brief: string;
+  sourceExcerpt?: string;
+  detail?: DetailLevel;
   sessionCtx?: SessionContext | null;
   signal?: AbortSignal;
 }): Promise<StudyPack> {
@@ -172,15 +231,15 @@ export async function createStudyPack(args: {
   // (Promise.allSettled would still require touching every branch; explicit catches
   //  keep the successful sections going when one fails.)
   const [core, assess, story] = await Promise.all([
-    packCore({ topic: args.topic, subject: args.subject, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
+    packCore({ topic: args.topic, subject: args.subject, brief: args.brief, sourceExcerpt: args.sourceExcerpt, detail: args.detail, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
       console.warn("packCore failed:", (e as Error).message);
       return { clean_notes: "", reviewer: "", summary: "" };
     }),
-    packAssess({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
+    packAssess({ topic: args.topic, brief: args.brief, sourceExcerpt: args.sourceExcerpt, detail: args.detail, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
       console.warn("packAssess failed:", (e as Error).message);
       return { flashcards: [], quiz: [] };
     }),
-    packStory({ topic: args.topic, brief: args.brief, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
+    packStory({ topic: args.topic, brief: args.brief, sourceExcerpt: args.sourceExcerpt, detail: args.detail, sessionCtx: args.sessionCtx, signal: args.signal }).catch((e) => {
       console.warn("packStory failed:", (e as Error).message);
       return "";
     }),
