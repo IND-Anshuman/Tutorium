@@ -116,6 +116,10 @@ Return JSON: {"brief": <=120 words covering only the core concepts a tutor needs
 // Each sub-call is small and isolated; orchestrate saves them incrementally so a
 // partial pack survives. All consume the compact brief, not raw notes.
 
+// Core is SPLIT INTO TWO CALLS: notes are long-form and get their own budget;
+// recap+summary in a second call. One giant JSON response proved fragile —
+// when the model spent the budget on notes, reviewer/summary were truncated
+// away entirely (observed live). Two smaller calls can't starve each other.
 async function packCore(args: {
   topic: string; subject: string; brief: string;
   sourceExcerpt?: string; detail?: DetailLevel;
@@ -123,17 +127,36 @@ async function packCore(args: {
 }): Promise<{ clean_notes: string; reviewer: string; summary: string }> {
   const detail = args.detail ?? "standard";
   const sourceBlock = args.sourceExcerpt
-      ? `\nSOURCE EXCERPT (authoritative — from the student's actual material; mine it for specifics the brief may have compressed, never invent facts that contradict it):\n"""${args.sourceExcerpt}"""`
-      : "";
-    const { data } = await llmJsonSig<{ clean_notes: string; reviewer: string; summary: string }>(args.signal, {
-    system: domainContextPrefix(args.sessionCtx) + `Write a study pack core for the topic. Return JSON {"clean_notes": markdown, "reviewer": thorough bullet recap, "summary": 5-8 sentences}.
+    ? `\nSOURCE EXCERPT (authoritative — from the student's actual material; mine it for specifics the brief may have compressed, never invent facts that contradict it):\n"""${args.sourceExcerpt}"""`
+    : "";
+  const grounding = `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""${sourceBlock}`;
+  const [notesR, recapR] = await Promise.all([
+    llmJsonSig<{ clean_notes: string }>(args.signal, {
+      system: domainContextPrefix(args.sessionCtx) + `Write the study notes for the topic. Return JSON {"clean_notes": markdown with clear section headings}.
 ${DETAIL_NOTES_LINE[detail]}
 Accurate, grade-appropriate, no filler.`,
-    user: `Topic: ${args.topic} (${args.subject})\nBrief:\n"""${args.brief}"""${sourceBlock}`,
-        maxTokens: DETAIL_TOKENS[detail],
-      });
-      return { clean_notes: data.clean_notes || "", reviewer: data.reviewer || "", summary: data.summary || "" };
-    }
+      user: grounding,
+      maxTokens: DETAIL_TOKENS[detail],
+    }).catch((e) => {
+      console.warn("packCore.notes failed:", (e as Error).message);
+      return { data: { clean_notes: "" } as { clean_notes: string } };
+    }),
+    llmJsonSig<{ reviewer: string; summary: string }>(args.signal, {
+      system: domainContextPrefix(args.sessionCtx) + `Write the recap materials for the topic. Return JSON {"reviewer": thorough bullet recap (8-14 bullets, each a complete thought), "summary": 5-8 sentence prose summary}.
+Accurate, grade-appropriate, no filler.`,
+      user: grounding,
+      maxTokens: detail === "light" ? 1200 : 2000,
+    }).catch((e) => {
+      console.warn("packCore.recap failed:", (e as Error).message);
+      return { data: { reviewer: "", summary: "" } as { reviewer: string; summary: string } };
+    }),
+  ]);
+  return {
+    clean_notes: notesR.data.clean_notes || "",
+    reviewer: recapR.data.reviewer || "",
+    summary: recapR.data.summary || "",
+  };
+}
 
 async function assessBand(args: {
   topic: string; brief: string; quizCount: number; cardCount: number; difficulty: string;

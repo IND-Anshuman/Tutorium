@@ -23,7 +23,8 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(() => {throw new Error("Network forbidden in integration test");}));
   state.llm.mockImplementation(async ({system}: {system:string}) => {
     if(system.includes("Summarize the source")) return {data:{brief:"Plants use sunlight.",key_terms:["sunlight"]}};
-    if(system.includes("study pack core")) return {data:{clean_notes:"Notes",reviewer:"Review",summary:"Plants use sunlight."}};
+    if(system.includes("study notes")) return {data:{clean_notes:"Notes"}};
+    if(system.includes("recap materials")) return {data:{reviewer:"Review",summary:"Plants use sunlight."}};
     if(system.includes("assessment tools")) return {data:{flashcards:[{front:"Q",back:"A"}],quiz:[{question:"Q",choices:["A","B","C","D"],answer:"0",explanation:"E"}]}};
     if(system.includes("memorable story")) return {data:{story:"A plant story."}};
     throw new Error("Unexpected generation branch");

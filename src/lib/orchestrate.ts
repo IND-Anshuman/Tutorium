@@ -198,10 +198,11 @@ if (ctx.document?.text) {
               sessionCtx: ctx.sessionCtx,
               signal: ctx.signal,
             });
-          } catch {
-            // Brief generation is the pack's foundation; without it every section
-            // would fail too. Return an honest retry reply instead of throwing so
-            // both the sync route and the background job persist a real message.
+          } catch (e) {
+                  // Brief generation is the pack's foundation; without it every section
+                  // would fail too. Return an honest retry reply instead of throwing so
+                  // both the sync route and the background job persist a real message.
+                  console.error("[probe] brief error:", (e as Error).message, (e as Error).cause ?? "");
             return {
               reply: `I couldn't build a study pack for **${topicTitle}** this time — that's usually a temporary model hiccup. Ask me again in a moment and I'll rebuild it.`,
               interactive: null,

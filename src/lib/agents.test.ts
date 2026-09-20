@@ -60,7 +60,7 @@ describe("buildSourceExcerpt", () => {
 describe("two-channel grounding", () => {
   // The three pack sub-calls, identified by system prompt (robust to the extra
   // enrich pass that may add a 4th call).
-  const packCalls = () => captured.filter((c) => /study pack core|assessment tools|memorable story/.test(c.system));
+  const packCalls = () => captured.filter((c) => /study notes|recap materials|assessment tools|memorable story/.test(c.system));
   it("passes sourceExcerpt into every pack sub-call", async () => {
     await createStudyPack({
       topic: "Photosynthesis",
@@ -68,7 +68,7 @@ describe("two-channel grounding", () => {
       brief: "A short brief.",
       sourceExcerpt: "SOURCE MARKER unique-string-12345",
     });
-    expect(packCalls().length).toBe(3);
+    expect(packCalls().length).toBe(4);
     for (const c of packCalls()) {
       expect(c.user).toContain("SOURCE MARKER unique-string-12345");
       expect(c.user).toContain("authoritative");
@@ -76,7 +76,7 @@ describe("two-channel grounding", () => {
   });
   it("omits the source block when no excerpt is given", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B" });
-    expect(packCalls().length).toBe(3);
+    expect(packCalls().length).toBe(4);
     for (const c of packCalls()) expect(c.user).not.toContain("authoritative");
   });
 });
@@ -84,18 +84,23 @@ describe("two-channel grounding", () => {
 describe("detail-scaled budgets", () => {
   it("scales packCore maxTokens with detail level", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B", detail: "light" });
-    const lightCore = captured.filter((c) => c.system.includes("study pack core")).at(-1)!;
+    const lightNotes = captured.filter((c) => c.system.includes("study notes")).at(-1)!;
     await createStudyPack({ topic: "T", subject: "S", brief: "B", detail: "deep" });
-    const deepCore = captured.filter((c) => c.system.includes("study pack core")).at(-1)!;
-    expect(lightCore.maxTokens).toBe(2000);
-    expect(deepCore.maxTokens).toBe(4600);
+    const deepNotes = captured.filter((c) => c.system.includes("study notes")).at(-1)!;
+    expect(lightNotes.maxTokens).toBe(2000);
+    expect(deepNotes.maxTokens).toBe(4600);
     // deep prompt carries the completeness instruction
-    expect(deepCore.system).toMatch(/exhaustive|completeness/i);
+    expect(deepNotes.system).toMatch(/exhaustive|completeness/i);
+  });
+  it("core is split: notes call and recap call both fire", async () => {
+    await createStudyPack({ topic: "T", subject: "S", brief: "B" });
+    expect(captured.some((c) => c.system.includes("study notes"))).toBe(true);
+    expect(captured.some((c) => c.system.includes("recap materials"))).toBe(true);
   });
   it("default detail is standard", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B" });
-    const core = captured.filter((c) => c.system.includes("study pack core")).at(-1)!;
-    expect(core.maxTokens).toBe(3200);
+    const notes = captured.filter((c) => c.system.includes("study notes")).at(-1)!;
+    expect(notes.maxTokens).toBe(3200);
   });
   it("assess band budget scales with detail too", async () => {
     await createStudyPack({ topic: "T", subject: "S", brief: "B", detail: "deep" });
