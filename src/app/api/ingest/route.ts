@@ -1,19 +1,22 @@
-// PDF text extraction — pure JS via unpdf (pdf.js), in-memory, no disk writes.
+// Document ingestion — multi-format, in-memory, no disk writes.
 // POST multipart/form-data with a single "file" field.
 //
-// Two paths:
-//   1. TEXT PDF: pdf.js extracts embedded text. Fast, free, accurate.
-//   2. SCAN/IMAGE PDF: pdf.js gets nothing, we fall through to a Vision-Language
-//      Model (Qwen-VL via Featherless) for OCR. The VLM sees rasterized pages.
+// Formats:
+//   TEXT PDF  — pdf.js (unpdf) extracts embedded text. Fast, free, accurate.
+//   SCAN PDF  — no embedded text → Vision-Language OCR (Qwen-VL via Featherless).
+//   DOCX      — mammoth extractRawText (pure JS). Legacy .doc is rejected with
+//               a clear message (binary format, no JS parser).
+//   TXT / MD  — decoded directly.
 //
-// Both paths return the same JSON shape so the consumer (`docthink`) doesn't
-// care which one ran. A `source: "text" | "ocr"` field tells the client which
-// path served the request — useful for the demo and for debugging.
+// Detection is MAGIC-BYTES-FIRST (docextract.ts) — MIME/extension are hints.
+// Every path returns the same JSON shape so the consumer (`docthink`) doesn't
+// care which one ran; `source: "text" | "ocr"` says which extraction served.
 import { NextRequest, NextResponse } from "next/server";
 import { requireUserId } from "@/lib/identity";
 import { checkRateLimit, recordLlmCall } from "@/lib/limits";
 import { extractText, getDocumentProxy, renderPageAsImage } from "unpdf";
 import { ocrImages, ocrConfigured, MAX_OCR_PAGES } from "@/lib/ocr";
+import { detectDocKind, extractDocxText, extractTextBytes } from "@/lib/docextract";
 
 export const maxDuration = 120;
 
@@ -56,7 +59,54 @@ export async function POST(req: NextRequest) {
         { status: 413 }
       );
     }
+
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const kind = detectDocKind(bytes, file.type || "", file.name || "");
+
+    // ---- legacy .doc: unsupported on purpose, honest message ----
+    if (!kind) {
+      if (/\.doc$/i.test(file.name || "")) {
+        return NextResponse.json(
+          {
+            error:
+              "legacy .doc files aren't supported — open it in Word/Google Docs and save as .docx, then upload that.",
+          },
+          { status: 422 }
+        );
+      }
+      return NextResponse.json(
+        { error: `unsupported file type (${file.type || file.name || "unknown"}) — upload PDF, DOCX, TXT, or MD.` },
+        { status: 422 }
+      );
+    }
+
+    // ---- DOCX path ----
+    if (kind === "docx") {
+      const { text } = await extractDocxText(bytes, file.name);
+      return NextResponse.json({
+        filename: file.name,
+        pages: 0,
+        chars: text.length,
+        text,
+        source: "text",
+        format: "docx",
+      });
+    }
+
+    // ---- TXT / MD path ----
+    if (kind === "txt" || kind === "text") {
+      const text = extractTextBytes(bytes);
+      return NextResponse.json({
+        filename: file.name,
+        pages: 0,
+        chars: text.length,
+        text,
+        source: "text",
+        format: "txt",
+      });
+    }
+
+    // ---- PDF path ----
     const pdf = await getDocumentProxy(bytes);
     const pageCount = pdf.numPages;
     if (pageCount > MAX_PAGES) {
@@ -78,6 +128,7 @@ export async function POST(req: NextRequest) {
         chars: joined.length,
         text: joined,
         source: "text",
+        format: "pdf",
       });
     }
 
@@ -133,12 +184,13 @@ export async function POST(req: NextRequest) {
       text: ocr.text,
       source: "ocr",
       ocrModel: ocr.model,
+      format: "pdf",
     });
   } catch (err) {
-    const msg = (err as Error)?.message || "pdf extraction failed";
-    const invalid = /invalid|corrupt|password|structure/i.test(msg);
+    const msg = (err as Error)?.message || "file extraction failed";
+    const invalid = /invalid|corrupt|password|structure|no readable|couldn't read|empty/i.test(msg);
     return NextResponse.json(
-      { error: invalid ? "that file doesn't look like a readable PDF" : msg },
+      { error: invalid ? msg : msg },
       { status: invalid ? 422 : 500 }
     );
   }
