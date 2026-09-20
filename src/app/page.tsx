@@ -312,17 +312,6 @@ export default function Home() {
       setError(null);
     }, []);
 
-    // ---------- first-paint landing: create a session, then reload into it ----------
-    const startSession = useCallback(async (domain: string) => {
-      const r = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: USERID, domain }),
-      });
-      const d = await r.json();
-      window.location.href = `/?session=${d.id}`;
-    }, []);
-
   // ---------- main mic (hold-to-talk) ----------
   const startRecording = useCallback(async () => {
     if (sendState !== "idle" && sendState !== "transcribing") return;
@@ -626,7 +615,7 @@ export default function Home() {
       >
         <div className={messages.length === 0 ? "mx-auto w-full max-w-5xl px-4 pb-8 pt-6" : "mx-auto w-full max-w-3xl px-4 pb-8 pt-6"}>
           {messages.length === 0 ? (
-                      <LandingEmptyState onStart={startSession} />
+                      <LandingEmptyState />
                     ) : (
             <div className="space-y-5">
               {messages.map((m, i) => (
