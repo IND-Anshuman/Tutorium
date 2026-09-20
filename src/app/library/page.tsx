@@ -1,6 +1,7 @@
 import { listLibrary, listSessions } from "@/lib/db";
 import Link from "next/link";
 import { EmptyState } from "@/components/ui/primitives";
+import AccountControls from "@/components/auth/AccountControls";
 
 export const dynamic = "force-dynamic";
 
@@ -43,14 +44,17 @@ export default function LibraryPage() {
       <header className="sticky top-0 z-[40] border-b" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 88%, transparent)", backdropFilter: "blur(12px)" }}>
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
           <Link href="/" className="flex items-center gap-3 no-underline" style={{ color: "inherit" }}>
-            <span className="brand-mark brand-mark--img" aria-hidden>
-                          <img src="/logo-dark.png" alt="" width={32} height={32} />
-                        </span>
-                        <h1 className="text-lg font-bold tracking-tight">Library</h1>
-          </Link>
-          <Link href="/" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>
-            ← Back to chat
-          </Link>
+                      <span className="brand-mark brand-mark--img" aria-hidden>
+                        <img src="/logo-dark.png" alt="" width={32} height={32} />
+                      </span>
+                      <h1 className="text-lg font-bold tracking-tight">Library</h1>
+                    </Link>
+                    <nav className="flex items-center gap-2">
+                      <Link href="/" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>
+                        ← Back to chat
+                      </Link>
+                      <AccountControls />
+                    </nav>
         </div>
       </header>
 

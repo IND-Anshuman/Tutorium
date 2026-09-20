@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import AccountControls from "@/components/auth/AccountControls";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,14 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider dynamic>
-          <html lang="en">
-            <body className="min-h-screen">
-              <div className="clerk-controls" role="region" aria-label="Account">
-                <AccountControls />
-              </div>
-              {children}
-            </body>
-          </html>
-        </ClerkProvider>
+      <html lang="en">
+        <body className="min-h-screen">{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }

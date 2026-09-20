@@ -9,6 +9,7 @@ import type { InteractiveSayItBack, InteractiveTeachBack } from "@/lib/types";
 import Link from "next/link";
 import ExportPack from "@/components/chat/ExportPack";
 import WeaknessRadar from "@/components/chat/WeaknessRadar";
+import AccountControls from "@/components/auth/AccountControls";
 import { getOrCreateProfile } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -99,10 +100,11 @@ export default function TopicPage({ params }: { params: { id: string } }) {
               </p>
             </div>
           </Link>
-          <div className="flex items-center gap-2">
-            <Link href="/library" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>Library</Link>
-            <Link href={`/?topic=${params.id}`} className="btn btn-primary" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>Study now</Link>
-          </div>
+          <div className="flex shrink-0 items-center gap-2">
+                      <Link href="/library" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>Library</Link>
+                      <Link href={`/?topic=${params.id}`} className="btn btn-primary" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>Study now</Link>
+                      <AccountControls />
+                    </div>
         </div>
       </header>
 

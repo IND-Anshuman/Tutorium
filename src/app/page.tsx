@@ -6,6 +6,7 @@ import Markdown from "@/components/chat/Markdown";
 import Waveform from "@/components/ui/Waveform";
 import LandingEmptyState from "@/components/chat/LandingEmptyState";
 import SessionsRail from "@/components/sessions/SessionsRail";
+import AccountControls from "@/components/auth/AccountControls";
 import ExploreMore from "@/components/chat/ExploreMore";
 import MessageBubble from "@/components/chat/MessageBubble";
 import TranscriptBadge from "@/components/chat/TranscriptBadge";
@@ -529,25 +530,25 @@ export default function Home() {
       {/* top bar */}
       <div className="flex flex-1 flex-col min-w-0">
       <header className="sticky top-0 z-[var(--z-sticky)] border-b" style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--bg) 88%, transparent)", backdropFilter: "blur(12px)" }}>
-        <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-4">
-          <div className="flex items-center gap-3">
-            <button
-              className="rail-toggle"
-              aria-label="Open sessions list"
-              onClick={() => setRailOpen((o) => !o)}
-            >
-              <span className="rail-toggle-icon" aria-hidden>
-                <span /><span /><span />
-              </span>
-              <span className="rail-toggle-label">Sessions</span>
-              <span className="rail-toggle-pulse" aria-hidden />
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="brand-mark brand-mark--img" aria-hidden>
-                              <img src="/logo-dark.png" alt="" width={32} height={32} />
-                            </span>
-                            <span className="text-lg font-bold tracking-tight">Tutorium</span>
-            </div>
+        <div className={`mx-auto flex h-16 w-full ${messages.length === 0 ? "max-w-5xl" : "max-w-3xl"} items-center justify-between px-4`}>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <button
+                      className="rail-toggle"
+                      aria-label="Open sessions list"
+                      onClick={() => setRailOpen((o) => !o)}
+                    >
+                      <span className="rail-toggle-icon" aria-hidden>
+                        <span /><span /><span />
+                      </span>
+                      <span className="rail-toggle-label">Sessions</span>
+                      <span className="rail-toggle-pulse" aria-hidden />
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="brand-mark brand-mark--img" aria-hidden>
+                        <img src="/logo-dark.png" alt="" width={32} height={32} />
+                      </span>
+                      <span className="text-lg font-bold tracking-tight">Tutorium</span>
+                    </div>
             {(domain || topicTitle) && (
               <span className="domain-header" title={domain || topicTitle}>
                 <span className="dot" />
@@ -592,14 +593,12 @@ export default function Home() {
               </span>
             )}
           </div>
-          <nav className="flex items-center gap-2">
-            <a href="/library" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>
-              Library
-            </a>
-            <a className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)", display: "none" }} aria-hidden>
-              Settings
-            </a>
-          </nav>
+          <nav className="flex shrink-0 items-center gap-2">
+                      <a href="/library" className="btn btn-ghost" style={{ minHeight: 36, padding: "0 var(--space-sm)" }}>
+                        Library
+                      </a>
+                      <AccountControls />
+                    </nav>
         </div>
       </header>
 

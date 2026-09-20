@@ -1477,7 +1477,8 @@ button:not(:disabled):active {
 }
 
 /* ---- Clerk auth controls ---- */
-.clerk-controls { position: fixed; top: 10px; right: 14px; z-index: 90; display: flex; gap: 8px; align-items: center; }
+/* Account controls live inside each page's header nav (see page.tsx /
+   library/page.tsx / topic/[id]/page.tsx) — no floating layer. */
 .clerk-btn { min-height: 34px; padding: 0 var(--space-sm); font-size: 0.8rem; }
 .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
 .auth-card { width: 100%; max-width: 420px; }
